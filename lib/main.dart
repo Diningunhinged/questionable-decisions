@@ -1,4 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+
+import 'models/nearby_result.dart';
+import 'services/dining_unhinged_api.dart';
+import 'services/location_service.dart';
+import 'widgets/nearby_result_card.dart';
 
 void main() {
   runApp(const QuestionableDecisionsApp());
@@ -20,11 +26,6 @@ class QuestionableDecisionsApp extends StatelessWidget {
           primary: Color(0xFFD4AF37),
           secondary: Color(0xFFB87333),
           surface: Color(0xFF1C1C1E),
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF0D0D0F),
-          foregroundColor: Colors.white,
-          elevation: 0,
         ),
       ),
       home: const HomeScreen(),
@@ -89,86 +90,354 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class NearbyScreen extends StatelessWidget {
+class NearbyScreen extends StatefulWidget {
   const NearbyScreen({super.key});
+
+  @override
+  State<NearbyScreen> createState() => _NearbyScreenState();
+}
+
+class _NearbyScreenState extends State<NearbyScreen> {
+  bool _loading = false;
+  String? _error;
+  List<NearbyResult> _results = [];
+
+  Future<void> _loadNearby() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _results = [];
+    });
+
+    try {
+      debugPrint('LOCATION: Starting location request');
+
+      final position =
+          await LocationService.getCurrentLocation();
+
+      debugPrint(
+        'LOCATION: Current position = '
+        '${position.latitude}, ${position.longitude}',
+      );
+
+      final results =
+          await DiningUnhingedApi.fetchNearbyResults();
+
+      debugPrint(
+        'DINING UNHINGED: Received ${results.length} results',
+      );
+
+      final nearbyResults = <NearbyResult>[];
+
+      for (final result in results) {
+        final location = result.venue.location;
+
+        if (location == null || !location.isValid) {
+          debugPrint(
+            'Skipping ${result.venue.name}: '
+            'no valid location',
+          );
+          continue;
+        }
+
+        final distanceMeters =
+            Geolocator.distanceBetween(
+          position.latitude,
+          position.longitude,
+          location.latitude!,
+          location.longitude!,
+        );
+
+        final distanceKm = distanceMeters / 1000;
+
+        result.distanceKm = distanceKm;
+
+        debugPrint(
+          '${result.venue.name}: '
+          '${distanceKm.toStringAsFixed(2)} km',
+        );
+
+        nearbyResults.add(result);
+      }
+
+      nearbyResults.sort(
+        (a, b) =>
+            (a.distanceKm ?? double.infinity)
+                .compareTo(
+              b.distanceKm ?? double.infinity,
+            ),
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _results = nearbyResults;
+        _loading = false;
+      });
+    } on LocationPermissionException catch (e) {
+      debugPrint(
+        'LOCATION PERMISSION ERROR: ${e.message}',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _loading = false;
+        _error = e.message;
+      });
+    } on LocationServiceException catch (e) {
+      debugPrint(
+        'LOCATION SERVICE ERROR: ${e.message}',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _loading = false;
+        _error = e.message;
+      });
+    } catch (e, stackTrace) {
+      debugPrint(
+        'NEARBY ERROR: $e',
+      );
+
+      debugPrint(
+        'STACK TRACE: $stackTrace',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _loading = false;
+        _error =
+            "We couldn't find the questionable decisions.";
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Dining Unhinged brand logo
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.only(
-                  top: 4,
-                  bottom: 20,
-                ),
-                child: Image.asset(
-                  'assets/images/logo.png',
-                  width: 140,
-                  fit: BoxFit.contain,
-                ),
+      child: RefreshIndicator(
+        color: const Color(0xFFD4AF37),
+        backgroundColor: const Color(0xFF1C1C1E),
+        onRefresh: _loadNearby,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(
+                24,
+                20,
+                24,
+                32,
+              ),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.only(
+                        top: 4,
+                        bottom: 20,
+                      ),
+                      child: Image.asset(
+                        'assets/images/logo.png',
+                        width: 140,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ),
+
+                  Text(
+                    'QUESTIONABLE',
+                    style: Theme.of(context)
+                        .textTheme
+                        .labelLarge
+                        ?.copyWith(
+                          color: const Color(0xFFD4AF37),
+                          letterSpacing: 4,
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  Text(
+                    'DECISIONS NEARBY',
+                    style: Theme.of(context)
+                        .textTheme
+                        .headlineMedium
+                        ?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                        ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  Text(
+                    'Find somewhere worth making a questionable decision.',
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodyLarge
+                        ?.copyWith(
+                          color: Colors.white70,
+                        ),
+                  ),
+
+                  const SizedBox(height: 28),
+
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: _loading ? null : _loadNearby,
+                      icon: _loading
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Color(0xFF0D0D0F),
+                              ),
+                            )
+                          : const Icon(
+                              Icons.location_searching,
+                            ),
+                      label: Text(
+                        _loading
+                            ? 'SEARCHING...'
+                            : 'FIND SOMETHING NEARBY',
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor:
+                            const Color(0xFFD4AF37),
+                        foregroundColor:
+                            const Color(0xFF0D0D0F),
+                        disabledBackgroundColor:
+                            const Color(0xFFD4AF37),
+                        disabledForegroundColor:
+                            const Color(0xFF0D0D0F),
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 16,
+                        ),
+                        textStyle: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  if (_error != null)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1C1C1E),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.redAccent.withValues(
+                            alpha: 0.4,
+                          ),
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          const Icon(
+                            Icons.location_off,
+                            color: Colors.redAccent,
+                            size: 32,
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          Text(
+                            _error!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                            ),
+                          ),
+
+                          const SizedBox(height: 14),
+
+                          TextButton(
+                            onPressed: _loadNearby,
+                            child: const Text(
+                              'TRY AGAIN',
+                              style: TextStyle(
+                                color: Color(0xFFD4AF37),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  if (!_loading &&
+                      _error == null &&
+                      _results.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(
+                        vertical: 24,
+                      ),
+                      child: Text(
+                        'Tap the button and let the questionable decisions begin.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white54,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+
+                  if (_results.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(
+                        bottom: 16,
+                      ),
+                      child: Text(
+                        '${_results.length} nearby questionable options',
+                        style: const TextStyle(
+                          color: Colors.white60,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                ]),
               ),
             ),
 
-            Text(
-              'QUESTIONABLE',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: const Color(0xFFD4AF37),
-                    letterSpacing: 4,
-                    fontWeight: FontWeight.bold,
+            if (_results.isNotEmpty)
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(
+                  24,
+                  0,
+                  24,
+                  32,
+                ),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final result = _results[index];
+
+                      return Padding(
+                        padding: const EdgeInsets.only(
+                          bottom: 18,
+                        ),
+                        child: NearbyResultCard(
+                          result: result,
+                        ),
+                      );
+                    },
+                    childCount: _results.length,
                   ),
-            ),
-
-            const SizedBox(height: 4),
-
-            Text(
-              'DECISIONS NEARBY',
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                  ),
-            ),
-
-            const SizedBox(height: 12),
-
-            Text(
-              'Find somewhere worth making a questionable decision.',
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: Colors.white70,
-                  ),
-            ),
-
-            const SizedBox(height: 36),
-
-            _ActionCard(
-              icon: Icons.location_searching,
-              title: 'Find Something Nearby',
-              subtitle: 'Show me restaurants, pubs and bars around me.',
-              onTap: () {},
-            ),
-
-            const SizedBox(height: 16),
-
-            _ActionCard(
-              icon: Icons.casino,
-              title: 'Make The Decision For Me',
-              subtitle: 'I have no fucking idea where I want to go.',
-              onTap: () {},
-            ),
-
-            const SizedBox(height: 16),
-
-            _ActionCard(
-              icon: Icons.route,
-              title: 'Build A Crawl',
-              subtitle: 'Plan an evening of questionable decisions.',
-              onTap: () {},
-            ),
+                ),
+              ),
           ],
         ),
       ),
@@ -215,85 +484,6 @@ class SettingsScreen extends StatelessWidget {
   }
 }
 
-class _ActionCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _ActionCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      color: const Color(0xFF1C1C1E),
-      elevation: 0,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFD4AF37),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  icon,
-                  color: const Color(0xFF0D0D0F),
-                  size: 28,
-                ),
-              ),
-
-              const SizedBox(width: 16),
-
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-
-                    const SizedBox(height: 5),
-
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: Colors.white60,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const Icon(
-                Icons.chevron_right,
-                color: Colors.white38,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _PlaceholderScreen extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -324,7 +514,10 @@ class _PlaceholderScreen extends StatelessWidget {
 
               Text(
                 title,
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                style: Theme.of(context)
+                    .textTheme
+                    .headlineSmall
+                    ?.copyWith(
                       fontWeight: FontWeight.bold,
                     ),
               ),
@@ -334,7 +527,10 @@ class _PlaceholderScreen extends StatelessWidget {
               Text(
                 message,
                 textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyLarge
+                    ?.copyWith(
                       color: Colors.white60,
                     ),
               ),
