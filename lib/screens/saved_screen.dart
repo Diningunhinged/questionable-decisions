@@ -2,22 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/nearby_result.dart';
-
-/// Shared V1 Saved list.
-/// Nearby adds to this when LET'S FUCKING GO is pressed.
-final List<NearbyResult> savedNearbyResults = [];
-
-bool isSavedNearbyResult(NearbyResult result) {
-  return savedNearbyResults.any(
-    (saved) => saved.type == result.type && saved.slug == result.slug,
-  );
-}
-
-void saveNearbyResult(NearbyResult result) {
-  if (!isSavedNearbyResult(result)) {
-    savedNearbyResults.add(result);
-  }
-}
+import '../services/saved_store.dart';
 
 class SavedScreen extends StatelessWidget {
   const SavedScreen({super.key});
@@ -217,3 +202,4 @@ class SavedScreen extends StatelessWidget {
     );
   }
 }
+
