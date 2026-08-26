@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'navigation/app_navigation.dart';
-import 'screens/crawl_screen.dart';
+import 'features/crawl/screens/crawl_home_screen.dart';
 import 'screens/detour_screen.dart';
 import 'screens/help_screen.dart';
 import 'screens/nearby_screen.dart';
@@ -18,7 +18,8 @@ class QuestionableDecisionsApp extends StatelessWidget {
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0D0D0F),
+        scaffoldBackgroundColor:
+            const Color(0xFF0D0D0F),
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFFD4AF37),
           secondary: Color(0xFFB87333),
@@ -34,7 +35,8 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() =>
+      _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
@@ -50,9 +52,17 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final screens = <Widget>[
       const DetourScreen(),
-      const CrawlScreen(),
-      NearbyScreen(onDecisionCommitted: showSaved),
+
+      // Crawl now opens the new Phase 2
+      // Crawl Home screen.
+      const CrawlHomeScreen(),
+
+      NearbyScreen(
+        onDecisionCommitted: showSaved,
+      ),
+
       const SavedScreen(),
+
       const HelpScreen(),
     ];
 
@@ -61,7 +71,8 @@ class _HomeScreenState extends State<HomeScreen> {
         index: _currentIndex,
         children: screens,
       ),
-      bottomNavigationBar: QuestionableNavigationBar(
+      bottomNavigationBar:
+          QuestionableNavigationBar(
         currentIndex: _currentIndex,
         onSelect: (index) {
           setState(() {
@@ -72,4 +83,3 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-
