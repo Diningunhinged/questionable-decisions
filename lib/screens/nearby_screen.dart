@@ -56,7 +56,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
       );
 
       final results =
-          await DiningUnhingedApi.fetchNearbyResults();
+          await DiningUnhingedApi().fetchNearbyResults();
 
       debugPrint(
         'DINING UNHINGED: Received ${results.length} results',

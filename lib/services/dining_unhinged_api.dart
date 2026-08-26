@@ -1,30 +1,22 @@
 import 'dart:convert';
 
-import 'package:http/http.dart' as http;
-
+import '../core/network/api_client.dart';
 import '../models/nearby_result.dart';
 
 class DiningUnhingedApi {
-  // Replace this with your actual Dining Unhinged website URL.
-  static const String baseUrl = 'https://www.diningunhinged.ca';
+  DiningUnhingedApi({
+    ApiClient? client,
+  }) : _client = client ?? ApiClient();
 
-  static const String nearbyEndpoint = '/api/nearby.json';
+  final ApiClient _client;
 
-  static Future<List<NearbyResult>> fetchNearbyResults() async {
-    final uri = Uri.parse('$baseUrl$nearbyEndpoint');
+  static const String nearbyEndpoint =
+      '/api/nearby.json';
 
-    final response = await http.get(
-      uri,
-      headers: const {
-        'Accept': 'application/json',
-      },
+  Future<List<NearbyResult>> fetchNearbyResults() async {
+    final response = await _client.get(
+      nearbyEndpoint,
     );
-
-    if (response.statusCode != 200) {
-      throw Exception(
-        'Dining Unhinged API returned ${response.statusCode}',
-      );
-    }
 
     final decoded = jsonDecode(response.body);
 
@@ -41,5 +33,9 @@ class DiningUnhingedApi {
           ),
         )
         .toList();
+  }
+
+  void dispose() {
+    _client.dispose();
   }
 }

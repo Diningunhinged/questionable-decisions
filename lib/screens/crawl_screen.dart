@@ -49,7 +49,7 @@ class _CrawlScreenState extends State<CrawlScreen> {
 
     try {
       final position = await LocationService.getCurrentLocation();
-      final results = await DiningUnhingedApi.fetchNearbyResults();
+      final results = await DiningUnhingedApi().fetchNearbyResults();
 
       if (!mounted) return;
 
