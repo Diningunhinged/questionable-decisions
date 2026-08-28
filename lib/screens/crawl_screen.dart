@@ -33,8 +33,10 @@ class _CrawlScreenState extends State<CrawlScreen> {
   List<NearbyResult> _crawlStops = [];
   final Set<String> _encountered = <String>{};
   final Set<String> _encounteredLocations = <String>{};
+  final Set<String> _notifiedLocations = <String>{};
 
   Position? _currentPosition;
+  int _activeStopIndex = 0;
 
   bool _loading = false;
   bool _running = false;
@@ -98,7 +100,9 @@ class _CrawlScreenState extends State<CrawlScreen> {
       _error = null;
       _encountered.clear();
       _encounteredLocations.clear();
+      _notifiedLocations.clear();
       _currentPosition = null;
+      _activeStopIndex = 0;
       _results = [];
       _crawlStops = [];
     });
@@ -335,62 +339,177 @@ class _CrawlScreenState extends State<CrawlScreen> {
     _checkForEncounters(position);
   }
 
+  static const double _arrivalDistanceMeters = 10.0;
+
   void _checkForEncounters(Position position) {
-    for (final result in _crawlStops) {
-      final location = result.venue.location;
+    if (_activeStopIndex >= _crawlStops.length) {
+      return;
+    }
 
-      if (location == null || !location.isValid) {
-        continue;
-      }
+    final activeStop = _crawlStops[_activeStopIndex];
+    final location = activeStop.venue.location;
 
-      final physicalLocationKey = _physicalLocationKey(result);
+    if (location == null || !location.isValid) {
+      return;
+    }
 
-      final distanceMeters =
-          Geolocator.distanceBetween(
-        position.latitude,
-        position.longitude,
-        location.latitude!,
-        location.longitude!,
+    final physicalLocationKey =
+        _physicalLocationKey(activeStop);
+
+    final distanceMeters =
+        Geolocator.distanceBetween(
+      position.latitude,
+      position.longitude,
+      location.latitude!,
+      location.longitude!,
+    );
+
+    activeStop.distanceKm =
+        distanceMeters / 1000.0;
+
+    debugPrint(
+      'CRAWL NEXT STOP: '
+      '${activeStop.title} = '
+      '${distanceMeters.toStringAsFixed(1)} m',
+    );
+
+    // Only the active stop participates in the 500 m notification
+    // and 10 m arrival logic. Other stops are deliberately ignored.
+    if (!_notifiedLocations.contains(
+          physicalLocationKey,
+        ) &&
+        distanceMeters <=
+            _encounterDistanceMeters) {
+      _notifiedLocations.add(
+        physicalLocationKey,
       );
-
-      result.distanceKm =
-          distanceMeters / 1000.0;
 
       debugPrint(
-        'CRAWL DISTANCE: '
-        '${result.title} = '
-        '${distanceMeters.toStringAsFixed(1)} m',
+        'CRAWL NEARBY: '
+        '${activeStop.title} '
+        'within $_encounterDistanceMeters m',
       );
 
-      if (_encounteredLocations.contains(physicalLocationKey)) {
-        continue;
-      }
+      _showEncounter(
+        activeStop,
+        distanceMeters,
+      );
+    }
 
-      if (distanceMeters <=
-          _encounterDistanceMeters) {
-        debugPrint(
-          'CRAWL ENCOUNTER: '
-          '${result.title} '
-          'within $_encounterDistanceMeters m '
-          '(physical location: $physicalLocationKey)',
-        );
+    if (distanceMeters <=
+        _arrivalDistanceMeters) {
+      _markPhysicalLocationEncountered(
+        physicalLocationKey,
+      );
 
-        _encounteredLocations.add(physicalLocationKey);
+      debugPrint(
+        'CRAWL ARRIVED: '
+        '${activeStop.title} '
+        'at ${distanceMeters.toStringAsFixed(1)} m',
+      );
 
-        _markPhysicalLocationEncountered(
-          physicalLocationKey,
-        );
+      _advanceToNextStop(
+        activeStop,
+      );
 
-        _showEncounter(
-          result,
-          distanceMeters,
-        );
-      }
+      return;
     }
 
     if (mounted) {
       setState(() {});
     }
+  }
+
+  void _advanceToNextStop(
+    NearbyResult arrivedStop,
+  ) {
+    if (!mounted) {
+      return;
+    }
+
+    final arrivedName = arrivedStop.title;
+
+    if (_activeStopIndex >=
+        _crawlStops.length - 1) {
+      setState(() {
+        arrivedStop.distanceKm = 0.0;
+        _activeStopIndex =
+            _crawlStops.length;
+      });
+
+      debugPrint(
+        'CRAWL COMPLETE: Final stop reached.',
+      );
+
+      _showArrivalMessage(
+        arrivedName,
+        isComplete: true,
+      );
+
+      _stopLocationMonitoring();
+
+      return;
+    }
+
+    setState(() {
+      arrivedStop.distanceKm = 0.0;
+      _activeStopIndex++;
+    });
+
+    final nextStop =
+        _crawlStops[_activeStopIndex];
+
+    debugPrint(
+      'CRAWL NEXT STOP ACTIVATED: '
+      '${nextStop.title}',
+    );
+
+    _showArrivalMessage(
+      arrivedName,
+      nextStop: nextStop,
+    );
+
+    // The next stop may be within 10 m already, especially when
+    // two different venues are extremely close together. Run the
+    // same active-stop check immediately.
+    if (_currentPosition != null) {
+      _checkForEncounters(
+        _currentPosition!,
+      );
+    }
+  }
+
+  void _showArrivalMessage(
+    String arrivedName, {
+    NearbyResult? nextStop,
+    bool isComplete = false,
+  }) {
+    if (!mounted) {
+      return;
+    }
+
+    final message = isComplete
+        ? 'YOU HAVE ARRIVED AT $arrivedName · CRAWL COMPLETE'
+        : 'ARRIVED AT $arrivedName · '
+            'NEXT: ${nextStop!.title}';
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          duration:
+              const Duration(seconds: 5),
+          backgroundColor:
+              const Color(0xFF1C1C1E),
+          content: Text(
+            message,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      );
   }
 
   String _physicalLocationKey(NearbyResult result) {
@@ -547,7 +666,9 @@ class _CrawlScreenState extends State<CrawlScreen> {
   ///
   /// Moves the simulated GPS position to the selected Crawl stop and then
   /// immediately runs the same encounter check used by the real GPS stream.
-  Future<void> _simulateArrivalAtStop(NearbyResult result) async {
+  Future<void> _simulateArrivalAtStop(
+    NearbyResult result,
+  ) async {
     if (!kDebugMode) {
       return;
     }
@@ -563,7 +684,8 @@ class _CrawlScreenState extends State<CrawlScreen> {
       longitude: location.longitude!,
     );
 
-    final position = await LocationService.getCurrentLocation();
+    final position =
+        await LocationService.getCurrentLocation();
 
     if (!mounted || !_running) {
       return;
@@ -600,6 +722,8 @@ class _CrawlScreenState extends State<CrawlScreen> {
       _crawlStops = [];
       _encountered.clear();
       _encounteredLocations.clear();
+      _notifiedLocations.clear();
+      _activeStopIndex = 0;
       _error = null;
     });
 
@@ -1193,6 +1317,11 @@ class _CrawlScreenState extends State<CrawlScreen> {
                   ),
                 ),
               const SizedBox(height: 24),
+              if (_running &&
+                  _activeStopIndex <
+                      _crawlStops.length)
+                _buildNextDestinationCard(),
+
               if (_running && _crawlStops.isNotEmpty)
                 const Text(
                   'YOUR CRAWL STOPS',
@@ -1212,6 +1341,8 @@ class _CrawlScreenState extends State<CrawlScreen> {
                     encountered: _encountered.contains(
                       _resultKey(entry.value),
                     ),
+                    active:
+                        entry.key == _activeStopIndex,
                     onTap: () => _openReview(entry.value),
                     useImperial: _usesImperial,
                   ),
@@ -1265,12 +1396,97 @@ class _CrawlScreenState extends State<CrawlScreen> {
       ),
     );
   }
+
+  Widget _buildNextDestinationCard() {
+    final nextStop =
+        _crawlStops[_activeStopIndex];
+
+    final distanceMeters =
+        (nextStop.distanceKm ?? 0) * 1000;
+
+    final distanceText = _usesImperial
+        ? _formatDistance(distanceMeters)
+        : _formatDistance(distanceMeters);
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(
+        bottom: 18,
+      ),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF241F0F),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFFD4AF37),
+          width: 1.2,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'NEXT DESTINATION',
+            style: TextStyle(
+              color: Color(0xFFD4AF37),
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.5,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            nextStop.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Icon(
+                Icons.directions_walk,
+                color: Color(0xFFD4AF37),
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                distanceText,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Stop ${_activeStopIndex + 1} of ${_crawlStops.length}',
+            style: const TextStyle(
+              color: Colors.white54,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+
 }
+
 
 class _CrawlStopTile extends StatelessWidget {
   final int stopNumber;
   final NearbyResult result;
   final bool encountered;
+  final bool active;
   final VoidCallback onTap;
   final bool useImperial;
 
@@ -1278,6 +1494,7 @@ class _CrawlStopTile extends StatelessWidget {
     required this.stopNumber,
     required this.result,
     required this.encountered,
+    required this.active,
     required this.onTap,
     required this.useImperial,
   });
@@ -1292,6 +1509,15 @@ class _CrawlStopTile extends StatelessWidget {
     return Card(
       color: const Color(0xFF1C1C1E),
       margin: const EdgeInsets.only(bottom: 10),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: active
+              ? const Color(0xFFD4AF37)
+              : Colors.transparent,
+          width: active ? 1.2 : 0,
+        ),
+      ),
       child: ListTile(
         onTap: onTap,
         contentPadding: const EdgeInsets.symmetric(
@@ -1316,10 +1542,19 @@ class _CrawlStopTile extends StatelessWidget {
           ),
         ),
         subtitle: Text(
-          encountered ? 'ENCOUNTERED · $distanceText' : distanceText,
+          encountered
+              ? 'ARRIVED · $distanceText'
+              : active
+                  ? 'NEXT STOP · $distanceText'
+                  : distanceText,
           style: TextStyle(
-            color: encountered ? const Color(0xFFD4AF37) : Colors.white54,
-            fontWeight: encountered ? FontWeight.w700 : null,
+            color: active || encountered
+                ? const Color(0xFFD4AF37)
+                : Colors.white54,
+            fontWeight:
+                active || encountered
+                    ? FontWeight.w700
+                    : null,
           ),
         ),
         trailing: const Icon(
