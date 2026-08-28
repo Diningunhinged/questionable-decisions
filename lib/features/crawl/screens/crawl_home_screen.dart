@@ -6,7 +6,9 @@ import '../models/crawl_location_search_result.dart';
 import '../models/crawl_starting_point.dart';
 import '../services/crawl_location_service.dart';
 import '../services/crawl_test_locations.dart';
+import '../../../services/location_service.dart';
 import '../widgets/crawl_location_search.dart';
+import '../../../screens/crawl_screen.dart';
 
 class CrawlHomeScreen extends StatefulWidget {
   const CrawlHomeScreen({
@@ -56,9 +58,11 @@ class _CrawlHomeScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0F),
+      backgroundColor:
+          const Color(0xFF0D0D0F),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0D0D0F),
+        backgroundColor:
+            const Color(0xFF0D0D0F),
         foregroundColor: Colors.white,
         elevation: 0,
         title: const Text(
@@ -142,14 +146,21 @@ class _CrawlHomeScreenState
   }
 
   Widget _startingPointCard() {
+    final usingTestLocation =
+        kDebugMode &&
+        LocationService.isUsingDebugLocation;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: const Color(0xFF1C1C1E),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius:
+            BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.white10,
+          color: usingTestLocation
+              ? const Color(0xFFD4AF37)
+              : Colors.white10,
         ),
       ),
       child: Column(
@@ -171,7 +182,8 @@ class _CrawlHomeScreenState
                       'STARTING HERE',
                       style: TextStyle(
                         color: Colors.white,
-                        fontWeight: FontWeight.w800,
+                        fontWeight:
+                            FontWeight.w800,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -205,6 +217,47 @@ class _CrawlHomeScreenState
               ),
             ],
           ),
+          if (usingTestLocation) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding:
+                  const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+              decoration: BoxDecoration(
+                color:
+                    const Color(0xFF0D0D0F),
+                borderRadius:
+                    BorderRadius.circular(10),
+              ),
+              child: const Row(
+                children: [
+                  Icon(
+                    Icons.science,
+                    color:
+                        Color(0xFFD4AF37),
+                    size: 18,
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'TEST GPS ACTIVE — '
+                      'phone location is being simulated.',
+                      style: TextStyle(
+                        color:
+                            Color(0xFFD4AF37),
+                        fontSize: 12,
+                        fontWeight:
+                            FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           Row(
             children: [
@@ -214,21 +267,29 @@ class _CrawlHomeScreenState
                       _loadingLocation
                           ? null
                           : _useCurrentLocation,
-                  style: OutlinedButton.styleFrom(
+                  style:
+                      OutlinedButton.styleFrom(
                     foregroundColor:
-                        const Color(0xFFD4AF37),
-                    side: const BorderSide(
-                      color: Color(0xFFD4AF37),
+                        const Color(
+                      0xFFD4AF37,
+                    ),
+                    side:
+                        const BorderSide(
+                      color: Color(
+                        0xFFD4AF37,
+                      ),
                     ),
                     padding:
-                        const EdgeInsets.symmetric(
+                        const EdgeInsets
+                            .symmetric(
                       vertical: 13,
                     ),
                   ),
                   child: const Text(
                     'USE GPS',
                     style: TextStyle(
-                      fontWeight: FontWeight.w800,
+                      fontWeight:
+                          FontWeight.w800,
                     ),
                   ),
                 ),
@@ -238,14 +299,17 @@ class _CrawlHomeScreenState
                 child: OutlinedButton(
                   onPressed:
                       _toggleLocationSearch,
-                  style: OutlinedButton.styleFrom(
+                  style:
+                      OutlinedButton.styleFrom(
                     foregroundColor:
                         Colors.white70,
-                    side: const BorderSide(
+                    side:
+                        const BorderSide(
                       color: Colors.white24,
                     ),
                     padding:
-                        const EdgeInsets.symmetric(
+                        const EdgeInsets
+                            .symmetric(
                       vertical: 13,
                     ),
                   ),
@@ -254,7 +318,8 @@ class _CrawlHomeScreenState
                         ? 'HIDE SEARCH'
                         : 'SEARCH',
                     style: const TextStyle(
-                      fontWeight: FontWeight.w800,
+                      fontWeight:
+                          FontWeight.w800,
                     ),
                   ),
                 ),
@@ -268,21 +333,25 @@ class _CrawlHomeScreenState
               child: OutlinedButton(
                 onPressed:
                     _useSpirosTestLocation,
-                style: OutlinedButton.styleFrom(
+                style:
+                    OutlinedButton.styleFrom(
                   foregroundColor:
                       Colors.white70,
-                  side: const BorderSide(
+                  side:
+                      const BorderSide(
                     color: Colors.white24,
                   ),
                   padding:
-                      const EdgeInsets.symmetric(
+                      const EdgeInsets
+                          .symmetric(
                     vertical: 13,
                   ),
                 ),
                 child: const Text(
                   'TEST: SPIRO\'S',
                   style: TextStyle(
-                    fontWeight: FontWeight.w800,
+                    fontWeight:
+                        FontWeight.w800,
                   ),
                 ),
               ),
@@ -404,10 +473,12 @@ class _CrawlHomeScreenState
     );
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin:
+          const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: const Color(0xFF1C1C1E),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius:
+            BorderRadius.circular(14),
         border: Border.all(
           color: selected
               ? const Color(0xFFD4AF37)
@@ -416,8 +487,10 @@ class _CrawlHomeScreenState
       ),
       child: CheckboxListTile(
         value: selected,
-        activeColor: const Color(0xFFD4AF37),
-        checkColor: const Color(0xFF0D0D0F),
+        activeColor:
+            const Color(0xFFD4AF37),
+        checkColor:
+            const Color(0xFF0D0D0F),
         controlAffinity:
             ListTileControlAffinity.leading,
         title: Text(
@@ -435,14 +508,16 @@ class _CrawlHomeScreenState
   }
 
   Widget _walkingDistanceSelector() {
-    final unit = _configuration.distanceUnit;
+    final unit =
+        _configuration.distanceUnit;
 
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: const Color(0xFF1C1C1E),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius:
+            BorderRadius.circular(14),
         border: Border.all(
           color: Colors.white10,
         ),
@@ -457,14 +532,16 @@ class _CrawlHomeScreenState
                 'DISTANCE',
                 style: TextStyle(
                   color: Colors.white,
-                  fontWeight: FontWeight.w800,
+                  fontWeight:
+                      FontWeight.w800,
                 ),
               ),
               const Spacer(),
               _unitButton(
                 label: 'KM',
                 selected:
-                    unit == DistanceUnit.metric,
+                    unit ==
+                        DistanceUnit.metric,
                 onTap: () {
                   _setDistanceUnit(
                     DistanceUnit.metric,
@@ -475,7 +552,8 @@ class _CrawlHomeScreenState
               _unitButton(
                 label: 'MI',
                 selected:
-                    unit == DistanceUnit.imperial,
+                    unit ==
+                        DistanceUnit.imperial,
                 onTap: () {
                   _setDistanceUnit(
                     DistanceUnit.imperial,
@@ -486,33 +564,45 @@ class _CrawlHomeScreenState
           ),
           const SizedBox(height: 14),
           TextField(
-            controller: _distanceController,
+            controller:
+                _distanceController,
             keyboardType:
-                const TextInputType.numberWithOptions(
+                const TextInputType
+                    .numberWithOptions(
               decimal: true,
             ),
             style: const TextStyle(
               color: Colors.white,
               fontSize: 22,
-              fontWeight: FontWeight.w800,
+              fontWeight:
+                  FontWeight.w800,
             ),
-            decoration: InputDecoration(
+            decoration:
+                InputDecoration(
               filled: true,
-              fillColor: const Color(0xFF0D0D0F),
+              fillColor:
+                  const Color(0xFF0D0D0F),
               suffixText:
                   _configuration
                       .walkingDistanceUnitLabel,
-              suffixStyle: const TextStyle(
+              suffixStyle:
+                  const TextStyle(
                 color: Colors.white60,
-                fontWeight: FontWeight.w700,
+                fontWeight:
+                    FontWeight.w700,
               ),
-              hintText: 'Enter distance',
-              hintStyle: const TextStyle(
+              hintText:
+                  'Enter distance',
+              hintStyle:
+                  const TextStyle(
                 color: Colors.white30,
               ),
-              border: OutlineInputBorder(
+              border:
+                  OutlineInputBorder(
                 borderRadius:
-                    BorderRadius.circular(12),
+                    BorderRadius.circular(
+                  12,
+                ),
                 borderSide:
                     const BorderSide(
                   color: Colors.white10,
@@ -521,7 +611,9 @@ class _CrawlHomeScreenState
               enabledBorder:
                   OutlineInputBorder(
                 borderRadius:
-                    BorderRadius.circular(12),
+                    BorderRadius.circular(
+                  12,
+                ),
                 borderSide:
                     const BorderSide(
                   color: Colors.white10,
@@ -530,10 +622,13 @@ class _CrawlHomeScreenState
               focusedBorder:
                   OutlineInputBorder(
                 borderRadius:
-                    BorderRadius.circular(12),
+                    BorderRadius.circular(
+                  12,
+                ),
                 borderSide:
                     const BorderSide(
-                  color: Color(0xFFD4AF37),
+                  color:
+                      Color(0xFFD4AF37),
                 ),
               ),
             ),
@@ -545,9 +640,9 @@ class _CrawlHomeScreenState
             },
           ),
           const SizedBox(height: 10),
-          Text(
+          const Text(
             'Choose any distance you are willing to walk.',
-            style: const TextStyle(
+            style: TextStyle(
               color: Colors.white54,
               fontSize: 13,
             ),
@@ -563,7 +658,8 @@ class _CrawlHomeScreenState
     required VoidCallback onTap,
   }) {
     return InkWell(
-      borderRadius: BorderRadius.circular(10),
+      borderRadius:
+          BorderRadius.circular(10),
       onTap: onTap,
       child: Container(
         padding:
@@ -589,7 +685,8 @@ class _CrawlHomeScreenState
             color: selected
                 ? const Color(0xFF0D0D0F)
                 : Colors.white70,
-            fontWeight: FontWeight.w900,
+            fontWeight:
+                FontWeight.w900,
           ),
         ),
       ),
@@ -603,10 +700,12 @@ class _CrawlHomeScreenState
     required VoidCallback onTap,
   }) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin:
+          const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: const Color(0xFF1C1C1E),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius:
+            BorderRadius.circular(14),
         border: Border.all(
           color: selected
               ? const Color(0xFFD4AF37)
@@ -645,7 +744,8 @@ class _CrawlHomeScreenState
       width: double.infinity,
       child: FilledButton(
         onPressed: _startCrawl,
-        style: FilledButton.styleFrom(
+        style:
+            FilledButton.styleFrom(
           backgroundColor:
               const Color(0xFFD4AF37),
           foregroundColor:
@@ -692,7 +792,9 @@ class _CrawlHomeScreenState
         CrawlCategory.anyCategory) {
       current
         ..clear()
-        ..add(CrawlCategory.anyCategory);
+        ..add(
+          CrawlCategory.anyCategory,
+        );
     } else {
       current.remove(
         CrawlCategory.anyCategory,
@@ -755,7 +857,8 @@ class _CrawlHomeScreenState
       return;
     }
 
-    final value = double.tryParse(input);
+    final value =
+        double.tryParse(input);
 
     if (value == null || value <= 0) {
       return;
@@ -770,13 +873,17 @@ class _CrawlHomeScreenState
     setState(() {
       _configuration =
           _configuration.copyWith(
-        walkingDistanceMeters: meters,
+        walkingDistanceMeters:
+            meters,
       );
     });
   }
 
-  String _formatDistance(double value) {
-    if (value == value.roundToDouble()) {
+  String _formatDistance(
+    double value,
+  ) {
+    if (value ==
+        value.roundToDouble()) {
       return value.toStringAsFixed(0);
     }
 
@@ -796,6 +903,10 @@ class _CrawlHomeScreenState
   }
 
   Future<void> _useCurrentLocation() async {
+    if (kDebugMode) {
+      LocationService.clearDebugLocation();
+    }
+
     setState(() {
       _loadingLocation = true;
       _locationError = null;
@@ -811,7 +922,8 @@ class _CrawlHomeScreenState
       }
 
       setState(() {
-        _startingPoint = startingPoint;
+        _startingPoint =
+            startingPoint;
         _loadingLocation = false;
         _showLocationSearch = false;
       });
@@ -822,16 +934,29 @@ class _CrawlHomeScreenState
 
       setState(() {
         _loadingLocation = false;
-        _locationError = error.toString();
+        _locationError =
+            error.toString();
       });
     }
   }
 
   void _useSpirosTestLocation() {
+    final testLocation =
+        CrawlTestLocations
+            .spirosLloydminster;
+
+    if (kDebugMode) {
+      LocationService.setDebugLocation(
+        latitude:
+            testLocation.latitude,
+        longitude:
+            testLocation.longitude,
+      );
+    }
+
     setState(() {
       _startingPoint =
-          CrawlTestLocations
-              .spirosLloydminster;
+          testLocation;
 
       _locationError = null;
       _showLocationSearch = false;
@@ -839,13 +964,17 @@ class _CrawlHomeScreenState
 
     debugPrint(
       'CRAWL TEST LOCATION: '
-      '${_startingPoint!.name}',
+      '${testLocation.name}',
     );
 
     debugPrint(
       'Coordinates: '
-      '${_startingPoint!.latitude}, '
-      '${_startingPoint!.longitude}',
+      '${testLocation.latitude}, '
+      '${testLocation.longitude}',
+    );
+
+    debugPrint(
+      'CRAWL TEST GPS ACTIVE',
     );
   }
 
@@ -859,6 +988,10 @@ class _CrawlHomeScreenState
             'invalid coordinates.';
       });
       return;
+    }
+
+    if (kDebugMode) {
+      LocationService.clearDebugLocation();
     }
 
     setState(() {
@@ -886,43 +1019,61 @@ class _CrawlHomeScreenState
   }
 
   void _startCrawl() {
-    _updateWalkingDistance();
+  _updateWalkingDistance();
 
+  if (_startingPoint == null) {
+    setState(() {
+      _locationError = 'Please choose a starting point first.';
+    });
+    return;
+  }
+
+  debugPrint('CRAWL CONFIGURATION');
+
+  debugPrint(
+    'Starting point: ${_startingPoint!.name}',
+  );
+
+  debugPrint(
+    'Coordinates: '
+    '${_startingPoint!.latitude}, '
+    '${_startingPoint!.longitude}',
+  );
+
+  debugPrint(
+    'Stops: '
+    '${_configuration.stopCount}',
+  );
+
+  debugPrint(
+    'Categories: '
+    '${_configuration.categories}',
+  );
+
+  debugPrint(
+    'Walking distance: '
+    '${_configuration.displayedWalkingDistance} '
+    '${_configuration.walkingDistanceUnitLabel}',
+  );
+
+  debugPrint(
+    'Walking distance metres: '
+    '${_configuration.walkingDistanceMeters}',
+  );
+
+  if (kDebugMode) {
     debugPrint(
-      'CRAWL CONFIGURATION',
-    );
-
-    debugPrint(
-      'Starting point: '
-      '${_startingPoint?.name ?? 'Not selected'}',
-    );
-
-    if (_startingPoint != null) {
-      debugPrint(
-        'Coordinates: '
-        '${_startingPoint!.latitude}, '
-        '${_startingPoint!.longitude}',
-      );
-    }
-
-    debugPrint(
-      'Stops: ${_configuration.stopCount}',
-    );
-
-    debugPrint(
-      'Categories: '
-      '${_configuration.categories}',
-    );
-
-    debugPrint(
-      'Walking distance: '
-      '${_configuration.displayedWalkingDistance} '
-      '${_configuration.walkingDistanceUnitLabel}',
-    );
-
-    debugPrint(
-      'Walking distance metres: '
-      '${_configuration.walkingDistanceMeters}',
+      'Debug GPS active: '
+      '${LocationService.isUsingDebugLocation}',
     );
   }
+
+  Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => CrawlScreen(
+        configuration: _configuration,
+      ),
+    ),
+  );
+}
 }

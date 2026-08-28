@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -23,10 +24,15 @@ class CrawlScreen extends StatefulWidget {
 }
 
 class _CrawlScreenState extends State<CrawlScreen> {
+  static const double _encounterDistanceMeters = 500.0;
+
   StreamSubscription<Position>? _positionSubscription;
+  Timer? _debugLocationTimer;
 
   List<NearbyResult> _results = [];
+  List<NearbyResult> _crawlStops = [];
   final Set<String> _encountered = <String>{};
+  final Set<String> _encounteredLocations = <String>{};
 
   Position? _currentPosition;
 
@@ -34,15 +40,14 @@ class _CrawlScreenState extends State<CrawlScreen> {
   bool _running = false;
   String? _error;
 
-  double get _triggerDistanceMeters =>
+  double get _crawlRadiusMeters =>
       widget.configuration.walkingDistanceMeters;
 
   bool get _usesImperial =>
-      widget.configuration.distanceUnit ==
-      DistanceUnit.imperial;
+      widget.configuration.distanceUnit == DistanceUnit.imperial;
 
-  String get _triggerDistanceText {
-    final meters = _triggerDistanceMeters;
+  String get _crawlRadiusText {
+    final meters = _crawlRadiusMeters;
 
     if (_usesImperial) {
       final miles = meters / 1609.344;
@@ -62,9 +67,24 @@ class _CrawlScreenState extends State<CrawlScreen> {
     return '${(meters / 1000).toStringAsFixed(1)} km';
   }
 
+  String get _encounterDistanceText {
+    if (_usesImperial) {
+      final feet = _encounterDistanceMeters * 3.28084;
+
+      if (feet < 528) {
+        return '${feet.round()} ft';
+      }
+
+      final miles = _encounterDistanceMeters / 1609.344;
+      return '${miles.toStringAsFixed(1)} mi';
+    }
+
+    return '${_encounterDistanceMeters.round()} m';
+  }
+
   @override
   void dispose() {
-    _positionSubscription?.cancel();
+    _stopLocationMonitoring();
     super.dispose();
   }
 
@@ -77,8 +97,10 @@ class _CrawlScreenState extends State<CrawlScreen> {
       _loading = true;
       _error = null;
       _encountered.clear();
+      _encounteredLocations.clear();
       _currentPosition = null;
       _results = [];
+      _crawlStops = [];
     });
 
     try {
@@ -99,36 +121,103 @@ class _CrawlScreenState extends State<CrawlScreen> {
           )
           .toList();
 
+      final crawlResults = <NearbyResult>[];
+
+      for (final result in validResults) {
+        final location = result.venue.location;
+
+        if (location == null || !location.isValid) {
+          continue;
+        }
+
+        final distanceMeters =
+            Geolocator.distanceBetween(
+          position.latitude,
+          position.longitude,
+          location.latitude!,
+          location.longitude!,
+        );
+
+        if (distanceMeters <= _crawlRadiusMeters) {
+          result.distanceKm =
+              distanceMeters / 1000.0;
+
+          crawlResults.add(result);
+        }
+      }
+
+      crawlResults.sort(
+        (a, b) =>
+            (a.distanceKm ?? double.infinity)
+                .compareTo(
+          b.distanceKm ?? double.infinity,
+        ),
+      );
+
+      final categoryResults = crawlResults
+          .where(_matchesSelectedCategory)
+          .toList();
+
+      final crawlStops = _buildCrawlStops(
+        categoryResults,
+        position,
+      );
+
       setState(() {
         _currentPosition = position;
-        _results = validResults;
+        _results = crawlResults;
+        _crawlStops = crawlStops;
         _running = true;
         _loading = false;
       });
 
-      await _positionSubscription?.cancel();
+      debugPrint('CRAWL STARTED');
 
-      _positionSubscription =
-          Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          distanceFilter: 25,
-        ),
-      ).listen(
-        _handlePosition,
-        onError: (Object error) {
-          if (!mounted) {
-            return;
-          }
+      debugPrint(
+        'Starting position: '
+        '${position.latitude}, ${position.longitude}',
+      );
 
-          setState(() {
-            _error = 'GPS monitoring stopped: $error';
-            _running = false;
-          });
-        },
+      debugPrint(
+        'Reviewed locations returned: '
+        '${validResults.length}',
+      );
+
+      debugPrint(
+        'Crawl candidates within radius: '
+        '${crawlResults.length}',
+      );
+
+      debugPrint(
+        'Crawl candidates after category filter: '
+        '${categoryResults.length}',
+      );
+
+      debugPrint(
+        'CRAWL STOPS SELECTED: '
+        '${crawlStops.length} of ${widget.configuration.stopCount}',
+      );
+
+      for (var index = 0; index < crawlStops.length; index++) {
+        debugPrint(
+          'CRAWL STOP ${index + 1}: '
+          '${crawlStops[index].title}',
+        );
+      }
+
+      debugPrint(
+        'CRAWL SEARCH RADIUS: '
+        '$_crawlRadiusMeters metres',
+      );
+
+      debugPrint(
+        'CRAWL ENCOUNTER RADIUS: '
+        '$_encounterDistanceMeters metres',
       );
 
       _checkForEncounters(position);
+
+      await _startLocationMonitoring();
     } on LocationServiceException catch (e) {
       if (!mounted) {
         return;
@@ -159,6 +248,76 @@ class _CrawlScreenState extends State<CrawlScreen> {
     }
   }
 
+  Future<void> _startLocationMonitoring() async {
+    await _positionSubscription?.cancel();
+    _positionSubscription = null;
+
+    _debugLocationTimer?.cancel();
+    _debugLocationTimer = null;
+
+    if (!_running) {
+      return;
+    }
+
+    if (kDebugMode &&
+        LocationService.isUsingDebugLocation) {
+      debugPrint(
+        'CRAWL LOCATION MONITORING: '
+        'DEBUG LOCATION MODE',
+      );
+
+      _debugLocationTimer = Timer.periodic(
+        const Duration(seconds: 1),
+        (_) async {
+          if (!_running || !mounted) {
+            return;
+          }
+
+          try {
+            final position =
+                await LocationService
+                    .getCurrentLocation();
+
+            _handlePosition(position);
+          } catch (error) {
+            debugPrint(
+              'CRAWL DEBUG LOCATION ERROR: '
+              '$error',
+            );
+          }
+        },
+      );
+
+      return;
+    }
+
+    debugPrint(
+      'CRAWL LOCATION MONITORING: '
+      'REAL GPS MODE',
+    );
+
+    _positionSubscription =
+        Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 25,
+      ),
+    ).listen(
+      _handlePosition,
+      onError: (Object error) {
+        if (!mounted) {
+          return;
+        }
+
+        setState(() {
+          _error =
+              'GPS monitoring stopped: $error';
+          _running = false;
+        });
+      },
+    );
+  }
+
   void _handlePosition(Position position) {
     if (!mounted || !_running) {
       return;
@@ -168,30 +327,59 @@ class _CrawlScreenState extends State<CrawlScreen> {
       _currentPosition = position;
     });
 
+    debugPrint(
+      'CRAWL POSITION: '
+      '${position.latitude}, ${position.longitude}',
+    );
+
     _checkForEncounters(position);
   }
 
   void _checkForEncounters(Position position) {
-    for (final result in _results) {
+    for (final result in _crawlStops) {
       final location = result.venue.location;
 
-      if (location == null ||
-          !location.isValid ||
-          _encountered.contains(_resultKey(result))) {
+      if (location == null || !location.isValid) {
         continue;
       }
 
-      final distanceMeters = Geolocator.distanceBetween(
+      final physicalLocationKey = _physicalLocationKey(result);
+
+      final distanceMeters =
+          Geolocator.distanceBetween(
         position.latitude,
         position.longitude,
         location.latitude!,
         location.longitude!,
       );
 
-      result.distanceKm = distanceMeters / 1000.0;
+      result.distanceKm =
+          distanceMeters / 1000.0;
 
-      if (distanceMeters <= _triggerDistanceMeters) {
-        _encountered.add(_resultKey(result));
+      debugPrint(
+        'CRAWL DISTANCE: '
+        '${result.title} = '
+        '${distanceMeters.toStringAsFixed(1)} m',
+      );
+
+      if (_encounteredLocations.contains(physicalLocationKey)) {
+        continue;
+      }
+
+      if (distanceMeters <=
+          _encounterDistanceMeters) {
+        debugPrint(
+          'CRAWL ENCOUNTER: '
+          '${result.title} '
+          'within $_encounterDistanceMeters m '
+          '(physical location: $physicalLocationKey)',
+        );
+
+        _encounteredLocations.add(physicalLocationKey);
+
+        _markPhysicalLocationEncountered(
+          physicalLocationKey,
+        );
 
         _showEncounter(
           result,
@@ -202,6 +390,39 @@ class _CrawlScreenState extends State<CrawlScreen> {
 
     if (mounted) {
       setState(() {});
+    }
+  }
+
+  String _physicalLocationKey(NearbyResult result) {
+    final location = result.venue.location!;
+
+    // Coordinates are rounded to roughly centimetre-level precision.
+    // This treats reviews at the same physical venue as one encounter
+    // while still keeping genuinely different nearby venues separate.
+    final latitude =
+        location.latitude!.toStringAsFixed(5);
+    final longitude =
+        location.longitude!.toStringAsFixed(5);
+
+    return 'location:$latitude,$longitude';
+  }
+
+  void _markPhysicalLocationEncountered(
+    String physicalLocationKey,
+  ) {
+    for (final result in _crawlStops) {
+      final location = result.venue.location;
+
+      if (location == null || !location.isValid) {
+        continue;
+      }
+
+      if (_physicalLocationKey(result) ==
+          physicalLocationKey) {
+        _encountered.add(
+          _resultKey(result),
+        );
+      }
     }
   }
 
@@ -227,22 +448,26 @@ class _CrawlScreenState extends State<CrawlScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        duration: const Duration(seconds: 6),
+        duration:
+            const Duration(seconds: 6),
         backgroundColor:
             const Color(0xFF1C1C1E),
         content: Row(
           children: [
             const Icon(
               Icons.location_on,
-              color: Color(0xFFD4AF37),
+              color:
+                  Color(0xFFD4AF37),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 '${result.title} is $distance away.',
-                style: const TextStyle(
+                style:
+                    const TextStyle(
                   color: Colors.white,
-                  fontWeight: FontWeight.w600,
+                  fontWeight:
+                      FontWeight.w600,
                 ),
               ),
             ),
@@ -287,7 +512,9 @@ class _CrawlScreenState extends State<CrawlScreen> {
     NearbyResult result,
   ) async {
     final section =
-        result.isDrink ? 'drinks' : 'venues';
+        result.isDrink
+            ? 'drinks'
+            : 'venues';
 
     final url = Uri.parse(
       'https://www.diningunhinged.ca/'
@@ -305,7 +532,8 @@ class _CrawlScreenState extends State<CrawlScreen> {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
         const SnackBar(
           content: Text(
             'Could not open the Dining Unhinged review.',
@@ -315,9 +543,50 @@ class _CrawlScreenState extends State<CrawlScreen> {
     }
   }
 
-  Future<void> _stopCrawl() async {
+  /// Development-only helper for testing Crawl proximity notifications.
+  ///
+  /// Moves the simulated GPS position to the selected Crawl stop and then
+  /// immediately runs the same encounter check used by the real GPS stream.
+  Future<void> _simulateArrivalAtStop(NearbyResult result) async {
+    if (!kDebugMode) {
+      return;
+    }
+
+    final location = result.venue.location;
+
+    if (location == null || !location.isValid) {
+      return;
+    }
+
+    LocationService.setDebugLocation(
+      latitude: location.latitude!,
+      longitude: location.longitude!,
+    );
+
+    final position = await LocationService.getCurrentLocation();
+
+    if (!mounted || !_running) {
+      return;
+    }
+
+    debugPrint(
+      'CRAWL DEBUG TEST: Simulated arrival at '
+      '${result.title}',
+    );
+
+    _handlePosition(position);
+  }
+
+  Future<void> _stopLocationMonitoring() async {
+    _debugLocationTimer?.cancel();
+    _debugLocationTimer = null;
+
     await _positionSubscription?.cancel();
     _positionSubscription = null;
+  }
+
+  Future<void> _stopCrawl() async {
+    await _stopLocationMonitoring();
 
     if (!mounted) {
       return;
@@ -328,9 +597,142 @@ class _CrawlScreenState extends State<CrawlScreen> {
       _loading = false;
       _currentPosition = null;
       _results = [];
+      _crawlStops = [];
       _encountered.clear();
+      _encounteredLocations.clear();
       _error = null;
     });
+
+    debugPrint('CRAWL STOPPED');
+  }
+
+  bool _matchesSelectedCategory(NearbyResult result) {
+    final categories = widget.configuration.categories;
+
+    if (categories.contains(CrawlCategory.anyCategory) ||
+        categories.contains(CrawlCategory.surpriseMe)) {
+      return true;
+    }
+
+    final category = (result.category ?? '').toLowerCase().trim();
+
+    for (final selected in categories) {
+      switch (selected) {
+        case CrawlCategory.breweries:
+          if (category.contains('brew')) return true;
+          break;
+        case CrawlCategory.cocktailBars:
+          if (category.contains('cocktail')) return true;
+          break;
+        case CrawlCategory.restaurants:
+          if (category.contains('restaurant')) return true;
+          break;
+        case CrawlCategory.distilleries:
+          if (category.contains('distill')) return true;
+          break;
+        case CrawlCategory.wine:
+          if (category.contains('wine')) return true;
+          break;
+        case CrawlCategory.coffee:
+          if (category.contains('coffee') || category.contains('café')) return true;
+          break;
+        case CrawlCategory.surpriseMe:
+        case CrawlCategory.anyCategory:
+          return true;
+      }
+    }
+
+    return false;
+  }
+
+  List<NearbyResult> _buildCrawlStops(
+    List<NearbyResult> candidates,
+    Position startingPosition,
+  ) {
+    // A Crawl stop represents a physical venue, not an individual
+    // Dining Unhinged review. Multiple reviews can share the same
+    // coordinates, so collapse them before selecting stops.
+    final uniqueVenues = <String, NearbyResult>{};
+
+    for (final result in candidates) {
+      final location = result.venue.location;
+
+      if (location == null || !location.isValid) {
+        continue;
+      }
+
+      final distanceMeters = Geolocator.distanceBetween(
+        startingPosition.latitude,
+        startingPosition.longitude,
+        location.latitude!,
+        location.longitude!,
+      );
+
+      // Do not treat the starting venue itself as a Crawl stop.
+      if (distanceMeters <= 50.0) {
+        continue;
+      }
+
+      uniqueVenues.putIfAbsent(
+        _physicalLocationKey(result),
+        () => result,
+      );
+    }
+
+    final remaining =
+        uniqueVenues.values.toList();
+
+    final stops = <NearbyResult>[];
+
+    var routeLatitude = startingPosition.latitude;
+    var routeLongitude = startingPosition.longitude;
+    final requestedStops = widget.configuration.stopCount;
+
+    while (remaining.isNotEmpty &&
+        stops.length < requestedStops) {
+      NearbyResult? nearest;
+      double nearestDistance = double.infinity;
+
+      for (final candidate in remaining) {
+        final location = candidate.venue.location;
+
+        if (location == null || !location.isValid) {
+          continue;
+        }
+
+        final distanceMeters =
+            Geolocator.distanceBetween(
+          routeLatitude,
+          routeLongitude,
+          location.latitude!,
+          location.longitude!,
+        );
+
+        if (distanceMeters < nearestDistance) {
+          nearestDistance = distanceMeters;
+          nearest = candidate;
+        }
+      }
+
+      if (nearest == null) {
+        break;
+      }
+
+      stops.add(nearest);
+      remaining.remove(nearest);
+
+      final location = nearest.venue.location!;
+      routeLatitude = location.latitude!;
+      routeLongitude = location.longitude!;
+    }
+
+    debugPrint(
+      'CRAWL PHYSICAL VENUES: '
+      '${uniqueVenues.length} unique venues from '
+      '${candidates.length} candidate results',
+    );
+
+    return stops;
   }
 
   List<NearbyResult> _sortedResults() {
@@ -355,6 +757,10 @@ class _CrawlScreenState extends State<CrawlScreen> {
   Widget build(BuildContext context) {
     final encounteredCount =
         _encountered.length;
+
+    final debugLocationActive =
+        kDebugMode &&
+        LocationService.isUsingDebugLocation;
 
     return Scaffold(
       backgroundColor:
@@ -472,7 +878,7 @@ class _CrawlScreenState extends State<CrawlScreen> {
                     ),
                     Text(
                       _running
-                          ? 'Watching for reviewed spots within $_triggerDistanceText.'
+                          ? 'Searching within $_crawlRadiusText. Alerts trigger at $_encounterDistanceText.'
                           : 'Start Crawl to begin watching your route.',
                       textAlign:
                           TextAlign.center,
@@ -482,6 +888,68 @@ class _CrawlScreenState extends State<CrawlScreen> {
                         fontSize: 14,
                       ),
                     ),
+                    if (debugLocationActive) ...[
+                      const SizedBox(
+                        height: 12,
+                      ),
+                      Container(
+                        width: double.infinity,
+                        padding:
+                            const EdgeInsets
+                                .symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration:
+                            BoxDecoration(
+                          color:
+                              const Color(
+                            0xFF0D0D0F,
+                          ),
+                          borderRadius:
+                              BorderRadius.circular(
+                            10,
+                          ),
+                          border:
+                              Border.all(
+                            color:
+                                const Color(
+                              0xFFD4AF37,
+                            ),
+                          ),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(
+                              Icons.science,
+                              color:
+                                  Color(
+                                0xFFD4AF37,
+                              ),
+                              size: 18,
+                            ),
+                            SizedBox(
+                              width: 8,
+                            ),
+                            Expanded(
+                              child: Text(
+                                'DEBUG GPS ACTIVE',
+                                style:
+                                    TextStyle(
+                                  color:
+                                      Color(
+                                    0xFFD4AF37,
+                                  ),
+                                  fontWeight:
+                                      FontWeight.w800,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     if (_currentPosition !=
                         null) ...[
                       const SizedBox(
@@ -501,13 +969,96 @@ class _CrawlScreenState extends State<CrawlScreen> {
                         ),
                       ),
                     ],
+                    if (kDebugMode &&
+                        _running &&
+                        _crawlStops.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF241F0F),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: const Color(0xFF6B5A20),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(
+                                  Icons.science,
+                                  color: Color(0xFFD4AF37),
+                                  size: 18,
+                                ),
+                                SizedBox(width: 8),
+                                Text(
+                                  'NOTIFICATION TEST',
+                                  style: TextStyle(
+                                    color: Color(0xFFD4AF37),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            const Text(
+                              'Simulate being at a Crawl stop to test the '
+                              '500 m proximity notification.',
+                              style: TextStyle(
+                                color: Colors.white60,
+                                fontSize: 12,
+                                height: 1.3,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            ..._crawlStops.asMap().entries.map(
+                              (entry) => Padding(
+                                padding: const EdgeInsets.only(bottom: 6),
+                                child: SizedBox(
+                                  width: double.infinity,
+                                  child: OutlinedButton.icon(
+                                    onPressed: () =>
+                                        _simulateArrivalAtStop(entry.value),
+                                    icon: const Icon(
+                                      Icons.location_on,
+                                      size: 16,
+                                    ),
+                                    label: Text(
+                                      'SIMULATE ARRIVAL: '
+                                      'STOP ${entry.key + 1}',
+                                    ),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor:
+                                          const Color(0xFFD4AF37),
+                                      side: const BorderSide(
+                                        color: Color(0xFF6B5A20),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 10,
+                                        horizontal: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
                     if (_running) ...[
                       const SizedBox(
                         height: 10,
                       ),
                       Text(
                         '$encounteredCount encountered · '
-                        '${_results.length} reviewed spots loaded',
+                        '${_results.length} reviewed spots in range',
                         style:
                             const TextStyle(
                           color:
@@ -618,7 +1169,8 @@ class _CrawlScreenState extends State<CrawlScreen> {
                       ),
                       side:
                           const BorderSide(
-                        color: Color(
+                        color:
+                            Color(
                           0xFFD4AF37,
                         ),
                       ),
@@ -641,47 +1193,54 @@ class _CrawlScreenState extends State<CrawlScreen> {
                   ),
                 ),
               const SizedBox(height: 24),
-              if (_running &&
-                  _results.isNotEmpty)
+              if (_running && _crawlStops.isNotEmpty)
                 const Text(
-                  'REVIEWED SPOTS',
-                  style:
-                      TextStyle(
-                    color:
-                        Color(0xFFD4AF37),
-                    fontWeight:
-                        FontWeight.w800,
-                    letterSpacing:
-                        1.5,
+                  'YOUR CRAWL STOPS',
+                  style: TextStyle(
+                    color: Color(0xFFD4AF37),
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+              if (_running && _crawlStops.isNotEmpty)
+                const SizedBox(height: 10),
+              if (_running)
+                ..._crawlStops.asMap().entries.map(
+                  (entry) => _CrawlStopTile(
+                    stopNumber: entry.key + 1,
+                    result: entry.value,
+                    encountered: _encountered.contains(
+                      _resultKey(entry.value),
+                    ),
+                    onTap: () => _openReview(entry.value),
+                    useImperial: _usesImperial,
                   ),
                 ),
               if (_running &&
-                  _results.isNotEmpty)
-                const SizedBox(
-                  height: 10,
+                  _results.isNotEmpty &&
+                  _results.length > _crawlStops.length) ...[
+                const SizedBox(height: 18),
+                const Text(
+                  'OTHER REVIEWED SPOTS IN RANGE',
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                  ),
                 ),
-              if (_running)
+                const SizedBox(height: 10),
                 ..._sortedResults()
+                    .where((result) => !_crawlStops.contains(result))
                     .take(10)
                     .map(
-                      (result) =>
-                          _CrawlResultTile(
+                      (result) => _CrawlResultTile(
                         result: result,
-                        encountered:
-                            _encountered
-                                .contains(
-                          _resultKey(
-                            result,
-                          ),
-                        ),
-                        onTap: () =>
-                            _openReview(
-                          result,
-                        ),
-                        useImperial:
-                            _usesImperial,
+                        encountered: false,
+                        onTap: () => _openReview(result),
+                        useImperial: _usesImperial,
                       ),
                     ),
+              ],
               if (_running &&
                   _results.isEmpty)
                 const Padding(
@@ -690,7 +1249,7 @@ class _CrawlScreenState extends State<CrawlScreen> {
                     top: 30,
                   ),
                   child: Text(
-                    'No reviewed spots with valid coordinates were found.',
+                    'No reviewed spots with valid coordinates were found within the selected Crawl distance.',
                     textAlign:
                         TextAlign.center,
                     style:
@@ -705,6 +1264,81 @@ class _CrawlScreenState extends State<CrawlScreen> {
         ),
       ),
     );
+  }
+}
+
+class _CrawlStopTile extends StatelessWidget {
+  final int stopNumber;
+  final NearbyResult result;
+  final bool encountered;
+  final VoidCallback onTap;
+  final bool useImperial;
+
+  const _CrawlStopTile({
+    required this.stopNumber,
+    required this.result,
+    required this.encountered,
+    required this.onTap,
+    required this.useImperial,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final distanceMeters = (result.distanceKm ?? 0) * 1000;
+    final distanceText = useImperial
+        ? _formatImperial(distanceMeters)
+        : _formatMetric(distanceMeters);
+
+    return Card(
+      color: const Color(0xFF1C1C1E),
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ListTile(
+        onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 6,
+        ),
+        leading: CircleAvatar(
+          backgroundColor: const Color(0xFFD4AF37),
+          foregroundColor: const Color(0xFF0D0D0F),
+          child: Text(
+            '$stopNumber',
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+        ),
+        title: Text(
+          result.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        subtitle: Text(
+          encountered ? 'ENCOUNTERED · $distanceText' : distanceText,
+          style: TextStyle(
+            color: encountered ? const Color(0xFFD4AF37) : Colors.white54,
+            fontWeight: encountered ? FontWeight.w700 : null,
+          ),
+        ),
+        trailing: const Icon(
+          Icons.chevron_right,
+          color: Color(0xFFD4AF37),
+        ),
+      ),
+    );
+  }
+
+  String _formatMetric(double meters) {
+    if (meters < 1000) return '${meters.round()} m';
+    return '${(meters / 1000).toStringAsFixed(1)} km';
+  }
+
+  String _formatImperial(double meters) {
+    final miles = meters / 1609.344;
+    if (miles < 0.1) return '${(meters * 3.28084).round()} ft';
+    return '${miles.toStringAsFixed(miles < 10 ? 1 : 0)} mi';
   }
 }
 
@@ -768,7 +1402,11 @@ class _CrawlResultTile
                       height: 54,
                       fit: BoxFit.cover,
                       errorBuilder:
-                          (_, __, ___) =>
+                          (
+                        context,
+                        error,
+                        stackTrace,
+                      ) =>
                               _fallbackIcon(),
                     ),
                   )
