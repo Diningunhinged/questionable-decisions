@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../features/crawl/models/saved_crawl.dart';
+import '../features/crawl/screens/crawl_builder_screen.dart';
 import '../features/crawl/services/saved_store.dart';
 import '../models/nearby_result.dart';
 import 'crawl_screen.dart';
@@ -70,6 +71,39 @@ class _SavedScreenState extends State<SavedScreen> {
         );
       }
     }
+  }
+
+  Future<void> _editSavedCrawl(
+    SavedCrawl crawl,
+  ) async {
+    final updated = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => CrawlBuilderScreen(
+          configuration: crawl.configuration,
+          startingPoint: crawl.startingPoint,
+          editingCrawl: crawl,
+        ),
+      ),
+    );
+
+    if (!mounted || updated != true) {
+      return;
+    }
+
+    await loadSavedCrawls();
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '"${crawl.name}" updated.',
+        ),
+      ),
+    );
   }
 
   Future<void> _startSavedCrawl(
@@ -250,6 +284,8 @@ class _SavedScreenState extends State<SavedScreen> {
                     onSelected: (value) {
                       if (value == 'start') {
                         _startSavedCrawl(crawl);
+                      } else if (value == 'edit') {
+                        _editSavedCrawl(crawl);
                       } else if (value == 'duplicate') {
                         _duplicateCrawl(crawl);
                       } else if (value == 'delete') {
@@ -261,6 +297,15 @@ class _SavedScreenState extends State<SavedScreen> {
                         value: 'start',
                         child: Text(
                           'START CRAWL',
+                          style: TextStyle(
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'edit',
+                        child: Text(
+                          'EDIT',
                           style: TextStyle(
                             color: Colors.white,
                           ),

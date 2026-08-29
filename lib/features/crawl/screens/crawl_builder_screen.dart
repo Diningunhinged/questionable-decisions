@@ -20,10 +20,12 @@ class CrawlBuilderScreen extends StatefulWidget {
     super.key,
     required this.configuration,
     required this.startingPoint,
+    this.editingCrawl,
   });
 
   final CrawlConfiguration configuration;
   final CrawlStartingPoint startingPoint;
+  final SavedCrawl? editingCrawl;
 
   @override
   State<CrawlBuilderScreen> createState() =>
@@ -50,7 +52,21 @@ class _CrawlBuilderScreenState
   @override
   void initState() {
     super.initState();
-    _selectManualBuild();
+
+    if (widget.editingCrawl != null) {
+      _mode = _CrawlBuildMode.manual;
+      _manualVenues = List<NearbyResult>.from(
+        widget.editingCrawl!.stops,
+      );
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _fitMapToManualVenues();
+        }
+      });
+    } else {
+      _selectManualBuild();
+    }
   }
 
   @override
@@ -695,7 +711,10 @@ class _CrawlBuilderScreenState
       context: context,
       useRootNavigator: true,
       builder: (dialogContext) {
-        return const _SaveCrawlDialog();
+        return _SaveCrawlDialog(
+          initialName: widget.editingCrawl?.name,
+          initialDate: widget.editingCrawl?.plannedDate,
+        );
       },
     );
 
@@ -704,7 +723,8 @@ class _CrawlBuilderScreenState
     }
 
     final crawl = SavedCrawl(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      id: widget.editingCrawl?.id ??
+          DateTime.now().microsecondsSinceEpoch.toString(),
       name: draft.name,
       plannedDate: draft.plannedDate,
       configuration: widget.configuration,
@@ -715,6 +735,11 @@ class _CrawlBuilderScreenState
     await saveCrawl(crawl);
 
     if (!mounted) {
+      return;
+    }
+
+    if (widget.editingCrawl != null) {
+      Navigator.of(context).pop(true);
       return;
     }
 
@@ -1681,7 +1706,13 @@ class _SaveCrawlDraft {
 }
 
 class _SaveCrawlDialog extends StatefulWidget {
-  const _SaveCrawlDialog();
+  const _SaveCrawlDialog({
+    this.initialName,
+    this.initialDate,
+  });
+
+  final String? initialName;
+  final DateTime? initialDate;
 
   @override
   State<_SaveCrawlDialog> createState() =>
@@ -1691,12 +1722,15 @@ class _SaveCrawlDialog extends StatefulWidget {
 class _SaveCrawlDialogState
     extends State<_SaveCrawlDialog> {
   late final TextEditingController _nameController;
-  DateTime _selectedDate = DateTime.now();
+  late DateTime _selectedDate;
 
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController();
+    _nameController = TextEditingController(
+      text: widget.initialName ?? '',
+    );
+    _selectedDate = widget.initialDate ?? DateTime.now();
   }
 
   @override
@@ -1709,7 +1743,10 @@ class _SaveCrawlDialogState
     final picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
-      firstDate: DateTime.now(),
+      firstDate: (widget.initialDate != null &&
+              widget.initialDate!.isBefore(DateTime.now()))
+          ? widget.initialDate!
+          : DateTime.now(),
       lastDate: DateTime.now().add(
         const Duration(days: 3650),
       ),
@@ -1833,8 +1870,10 @@ class _SaveCrawlDialogState
             foregroundColor:
                 const Color(0xFF0D0D0F),
           ),
-          child: const Text(
-            'SAVE CRAWL',
+          child: Text(
+            widget.initialName == null
+                ? 'SAVE CRAWL'
+                : 'UPDATE CRAWL',
             style: TextStyle(
               fontWeight: FontWeight.w900,
             ),
