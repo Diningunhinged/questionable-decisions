@@ -6,6 +6,7 @@ import '../models/crawl_location_search_result.dart';
 import '../models/crawl_starting_point.dart';
 import '../services/crawl_location_service.dart';
 import '../services/crawl_test_locations.dart';
+import 'crawl_map_picker_screen.dart';
 import '../../../services/location_service.dart';
 import '../widgets/crawl_location_search.dart';
 import '../../../screens/crawl_screen.dart';
@@ -325,6 +326,36 @@ class _CrawlHomeScreenState
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed:
+                  _loadingLocation
+                      ? null
+                      : _chooseLocationOnMap,
+              style:
+                  OutlinedButton.styleFrom(
+                foregroundColor:
+                    Colors.white70,
+                side:
+                    const BorderSide(
+                  color: Colors.white24,
+                ),
+                padding:
+                    const EdgeInsets.symmetric(
+                  vertical: 13,
+                ),
+              ),
+              child: const Text(
+                'CHOOSE ON MAP',
+                style: TextStyle(
+                  fontWeight:
+                      FontWeight.w800,
+                ),
+              ),
+            ),
           ),
           if (kDebugMode) ...[
             const SizedBox(height: 10),
@@ -1015,6 +1046,49 @@ class _CrawlHomeScreenState
       'Coordinates: '
       '${result.latitude}, '
       '${result.longitude}',
+    );
+  }
+
+  Future<void> _chooseLocationOnMap() async {
+    if (kDebugMode) {
+      LocationService.clearDebugLocation();
+    }
+
+    final selectedStartingPoint =
+        await Navigator.of(context).push<CrawlStartingPoint>(
+      MaterialPageRoute(
+        builder: (_) => CrawlMapPickerScreen(
+          initialStartingPoint: _startingPoint,
+        ),
+      ),
+    );
+
+    if (!mounted || selectedStartingPoint == null) {
+      return;
+    }
+
+    if (!selectedStartingPoint.isValid) {
+      setState(() {
+        _locationError =
+            'The selected location has invalid coordinates.';
+      });
+      return;
+    }
+
+    setState(() {
+      _startingPoint = selectedStartingPoint;
+      _locationError = null;
+      _showLocationSearch = false;
+    });
+
+    debugPrint(
+      'CRAWL MAP LOCATION: ${selectedStartingPoint.name}',
+    );
+
+    debugPrint(
+      'Coordinates: '
+      '${selectedStartingPoint.latitude}, '
+      '${selectedStartingPoint.longitude}',
     );
   }
 
