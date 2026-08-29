@@ -7,6 +7,12 @@ import '../../../screens/crawl_screen.dart';
 import '../models/crawl_configuration.dart';
 import '../models/crawl_starting_point.dart';
 
+enum _CrawlBuildMode {
+  choose,
+  manual,
+  decisionParalysis,
+}
+
 class CrawlBuilderScreen extends StatefulWidget {
   const CrawlBuilderScreen({
     super.key,
@@ -30,14 +36,19 @@ class _CrawlBuilderScreenState
   GoogleMapController? _mapController;
 
   List<NearbyResult> _venues = [];
+  List<NearbyResult> _manualVenues = [];
 
-  bool _loading = true;
+  _CrawlBuildMode _mode =
+      _CrawlBuildMode.manual;
+
+  bool _loading = false;
+  bool _manualLoading = false;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _buildCrawl();
+    _selectManualBuild();
   }
 
   @override
@@ -46,14 +57,32 @@ class _CrawlBuilderScreenState
     super.dispose();
   }
 
-  Future<void> _buildCrawl() async {
-    if (mounted) {
-      setState(() {
-        _loading = true;
-        _error = null;
-      });
-    }
+  Future<void> _selectDecisionParalysis() async {
+    setState(() {
+      _mode =
+          _CrawlBuildMode.decisionParalysis;
+      _loading = true;
+      _error = null;
+      _venues = [];
+      _manualVenues = [];
+    });
 
+    await _buildDecisionParalysisCrawl();
+  }
+
+  Future<void> _selectManualBuild() async {
+    setState(() {
+      _mode = _CrawlBuildMode.manual;
+      _manualLoading = true;
+      _error = null;
+      _venues = [];
+      _manualVenues = [];
+    });
+
+    await _buildManualVenuePool();
+  }
+
+  Future<void> _buildDecisionParalysisCrawl() async {
     try {
       final results =
           await _api.fetchNearbyResults();
@@ -63,8 +92,9 @@ class _CrawlBuilderScreenState
           .toList();
 
       eligible.sort(
-        (a, b) => _distanceFromStartingPoint(a)
-            .compareTo(
+        (a, b) =>
+            _distanceFromStartingPoint(a)
+                .compareTo(
           _distanceFromStartingPoint(b),
         ),
       );
@@ -81,9 +111,11 @@ class _CrawlBuilderScreenState
       setState(() {
         _venues = selected;
         _loading = false;
+        _error = null;
       });
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) {
         if (mounted) {
           _fitMapToCrawl();
         }
@@ -100,17 +132,70 @@ class _CrawlBuilderScreenState
     }
   }
 
+  Future<void> _buildManualVenuePool() async {
+    try {
+      final results =
+          await _api.fetchNearbyResults();
+
+      final eligible = results
+          .where(_isEligibleVenue)
+          .toList();
+
+      eligible.sort(
+        (a, b) =>
+            _distanceFromStartingPoint(a)
+                .compareTo(
+          _distanceFromStartingPoint(b),
+        ),
+      );
+
+      final unique =
+          _selectAllUniqueVenues(
+        eligible,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _manualVenues = unique;
+        _manualLoading = false;
+        _error = null;
+      });
+
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) {
+        if (mounted) {
+          _fitMapToManualVenues();
+        }
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _manualLoading = false;
+        _error = error.toString();
+      });
+    }
+  }
+
   List<NearbyResult> _selectUniqueVenues(
     List<NearbyResult> eligible,
     int requestedStops,
   ) {
     final selected = <NearbyResult>[];
-    final physicalLocations = <String>{};
+    final physicalLocations =
+        <String>{};
 
     for (final result in eligible) {
-      final location = result.venue.location;
+      final location =
+          result.venue.location;
 
-      if (location == null || !location.isValid) {
+      if (location == null ||
+          !location.isValid) {
         continue;
       }
 
@@ -124,7 +209,8 @@ class _CrawlBuilderScreenState
 
       selected.add(result);
 
-      if (selected.length >= requestedStops) {
+      if (selected.length >=
+          requestedStops) {
         break;
       }
     }
@@ -132,14 +218,48 @@ class _CrawlBuilderScreenState
     return selected;
   }
 
-  bool _isEligibleVenue(NearbyResult result) {
+  List<NearbyResult> _selectAllUniqueVenues(
+    List<NearbyResult> eligible,
+  ) {
+    final selected = <NearbyResult>[];
+    final physicalLocations =
+        <String>{};
+
+    for (final result in eligible) {
+      final location =
+          result.venue.location;
+
+      if (location == null ||
+          !location.isValid) {
+        continue;
+      }
+
+      final key =
+          '${location.latitude!.toStringAsFixed(5)},'
+          '${location.longitude!.toStringAsFixed(5)}';
+
+      if (!physicalLocations.add(key)) {
+        continue;
+      }
+
+      selected.add(result);
+    }
+
+    return selected;
+  }
+
+  bool _isEligibleVenue(
+    NearbyResult result,
+  ) {
     if (result.isDrink) {
       return false;
     }
 
-    final location = result.venue.location;
+    final location =
+        result.venue.location;
 
-    if (location == null || !location.isValid) {
+    if (location == null ||
+        !location.isValid) {
       return false;
     }
 
@@ -151,10 +271,13 @@ class _CrawlBuilderScreenState
         _distanceFromStartingPoint(result);
 
     return distance <=
-        widget.configuration.walkingDistanceMeters;
+        widget.configuration
+            .walkingDistanceMeters;
   }
 
-  bool _matchesCategory(NearbyResult result) {
+  bool _matchesCategory(
+    NearbyResult result,
+  ) {
     final categories =
         widget.configuration.categories;
 
@@ -232,7 +355,7 @@ class _CrawlBuilderScreenState
           if (_containsAny(value, [
             'coffee',
             'cafe',
-            'café',
+            'caf├⌐',
           ])) {
             return true;
           }
@@ -313,22 +436,32 @@ class _CrawlBuilderScreenState
 
     final a =
         sinLat * sinLat +
-        _mathCos(lat1) *
-            _mathCos(lat2) *
-            sinLon *
-            sinLon;
+            _mathCos(lat1) *
+                _mathCos(lat2) *
+                sinLon *
+                sinLon;
 
     final c =
         2 *
-        _mathAtan2(
-          _mathSqrt(a),
-          _mathSqrt(1 - a),
-        );
+            _mathAtan2(
+              _mathSqrt(a),
+              _mathSqrt(1 - a),
+            );
 
     return earthRadius * c;
   }
 
   void _fitMapToCrawl() {
+    _fitMapToVenues(_venues);
+  }
+
+  void _fitMapToManualVenues() {
+    _fitMapToVenues(_manualVenues);
+  }
+
+  void _fitMapToVenues(
+    List<NearbyResult> venues,
+  ) {
     if (_mapController == null ||
         !mounted) {
       return;
@@ -339,16 +472,19 @@ class _CrawlBuilderScreenState
         widget.startingPoint.latitude,
         widget.startingPoint.longitude,
       ),
-      ..._venues
+      ...venues
           .where(
             (venue) =>
-                venue.venue.location?.isValid ??
+                venue.venue.location
+                    ?.isValid ??
                 false,
           )
           .map(
             (venue) => LatLng(
-              venue.venue.location!.latitude!,
-              venue.venue.location!.longitude!,
+              venue.venue.location!
+                  .latitude!,
+              venue.venue.location!
+                  .longitude!,
             ),
           ),
     ];
@@ -410,7 +546,9 @@ class _CrawlBuilderScreenState
     final markers = <Marker>{
       Marker(
         markerId:
-            const MarkerId('starting_point'),
+            const MarkerId(
+          'starting_point',
+        ),
         position: LatLng(
           widget.startingPoint.latitude,
           widget.startingPoint.longitude,
@@ -421,16 +559,22 @@ class _CrawlBuilderScreenState
               widget.startingPoint.name,
         ),
         icon:
-            BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor
+                .defaultMarkerWithHue(
           BitmapDescriptor.hueYellow,
         ),
       ),
     };
 
+    final venues = _mode ==
+            _CrawlBuildMode.manual
+        ? _manualVenues
+        : _venues;
+
     for (var index = 0;
-        index < _venues.length;
+        index < venues.length;
         index++) {
-      final venue = _venues[index];
+      final venue = venues[index];
       final location =
           venue.venue.location;
 
@@ -490,7 +634,8 @@ class _CrawlBuilderScreenState
 
   String _selectedDistanceText() {
     final meters =
-        widget.configuration.walkingDistanceMeters;
+        widget.configuration
+            .walkingDistanceMeters;
 
     if (widget.configuration.distanceUnit ==
         DistanceUnit.imperial) {
@@ -521,14 +666,54 @@ class _CrawlBuilderScreenState
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (_) => CrawlScreen(
+          configuration:
+              widget.configuration,
+        ),
+      ),
+    );
+  }
+
+  void _startManualCrawl() {
+    if (_manualVenues.isEmpty) {
+      return;
+    }
+
+    if (_manualVenues.length <
+        widget.configuration.stopCount) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              'Select at least '
+              '${widget.configuration.stopCount} stops.',
+            ),
+          ),
+        );
+
+      return;
+    }
+
+    // Manual Build is authoritative. Pass the selected
+    // venues in their current order to the Crawl screen.
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => CrawlScreen(
           configuration: widget.configuration,
+          manualStops:
+              List<NearbyResult>.from(
+            _manualVenues,
+          ),
+          autoStart: true,
         ),
       ),
     );
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final startingPosition = LatLng(
       widget.startingPoint.latitude,
       widget.startingPoint.longitude,
@@ -540,58 +725,269 @@ class _CrawlBuilderScreenState
       appBar: AppBar(
         backgroundColor:
             const Color(0xFF0D0D0F),
-        foregroundColor: Colors.white,
+        foregroundColor:
+            Colors.white,
         title: const Text(
-          'YOUR CRAWL',
+          'BUILD YOUR CRAWL',
           style: TextStyle(
-            fontWeight: FontWeight.w900,
+            fontWeight:
+                FontWeight.w900,
             letterSpacing: 1.1,
           ),
         ),
       ),
-      body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(
-                color: Color(0xFFD4AF37),
-              ),
-            )
-          : _error != null
-              ? _errorView()
-              : Column(
-                  children: [
-                    Expanded(
-                      flex: 5,
-                      child: GoogleMap(
-                        initialCameraPosition:
-                            CameraPosition(
-                          target:
-                              startingPosition,
-                          zoom: 14,
-                        ),
-                        onMapCreated:
-                            (controller) {
-                          _mapController =
-                              controller;
-                          _fitMapToCrawl();
-                        },
-                        markers: _markers(),
-                        myLocationButtonEnabled:
-                            true,
-                        myLocationEnabled:
-                            true,
-                        zoomControlsEnabled:
-                            false,
-                        mapToolbarEnabled:
-                            false,
-                      ),
-                    ),
-                    Expanded(
-                      flex: 5,
-                      child: _crawlDetails(),
-                    ),
-                  ],
-                ),
+      body: _buildBuilderBody(
+        startingPosition,
+      ),
     );
+  }
+
+  Widget _buildModeChoice() {
+    return ListView(
+      padding:
+          const EdgeInsets.fromLTRB(
+        20,
+        28,
+        20,
+        30,
+      ),
+      children: [
+        const Text(
+          'HOW DO YOU WANT TO CRAWL?',
+          style: TextStyle(
+            color:
+                Color(0xFFD4AF37),
+            fontSize: 13,
+            fontWeight:
+                FontWeight.w900,
+            letterSpacing: 1.4,
+          ),
+        ),
+        const SizedBox(
+          height: 10,
+        ),
+        const Text(
+          'You can make the questionable decisions yourself. Or surrender the responsibility entirely.',
+          style: TextStyle(
+            color:
+                Colors.white70,
+            fontSize: 17,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(
+          height: 28,
+        ),
+        _buildModeCard(
+          icon:
+              Icons.touch_app_outlined,
+          title:
+              'MANUAL BUILD',
+          description:
+              'You choose the stops. You decide the order. You own this.',
+          buttonText:
+              'BUILD IT MYSELF',
+          onPressed:
+              _manualLoading
+                  ? null
+                  : _selectManualBuild,
+        ),
+        const SizedBox(
+          height: 16,
+        ),
+        _buildModeCard(
+          icon:
+              Icons.psychology_outlined,
+          title:
+              'DECISION PARALYSIS',
+          description:
+              'Can\'t decide? Perfect. Let Questionable Decisions make the questionable decisions for you.',
+          buttonText:
+              'REMOVE MY RESPONSIBILITY',
+          onPressed:
+              _loading
+                  ? null
+                  : _selectDecisionParalysis,
+          featured: true,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildModeCard({
+    required IconData icon,
+    required String title,
+    required String description,
+    required String buttonText,
+    required VoidCallback? onPressed,
+    bool featured = false,
+  }) {
+    return Container(
+      padding:
+          const EdgeInsets.all(20),
+      decoration:
+          BoxDecoration(
+        color:
+            const Color(0xFF1C1C1E),
+        borderRadius:
+            BorderRadius.circular(18),
+        border: Border.all(
+          color: featured
+              ? const Color(
+                  0xFFD4AF37,
+                )
+              : Colors.white10,
+          width:
+              featured ? 1.3 : 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Icon(
+            icon,
+            color:
+                const Color(0xFFD4AF37),
+            size: 42,
+          ),
+          const SizedBox(
+            height: 14,
+          ),
+          Text(
+            title,
+            style:
+                const TextStyle(
+              color:
+                  Colors.white,
+              fontSize: 22,
+              fontWeight:
+                  FontWeight.w900,
+              letterSpacing:
+                  0.8,
+            ),
+          ),
+          const SizedBox(
+            height: 8,
+          ),
+          Text(
+            description,
+            style:
+                const TextStyle(
+              color:
+                  Colors.white60,
+              fontSize: 14,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(
+            height: 18,
+          ),
+          SizedBox(
+            width:
+                double.infinity,
+            height: 50,
+            child:
+                FilledButton(
+              onPressed:
+                  onPressed,
+              style:
+                  FilledButton.styleFrom(
+                backgroundColor:
+                    const Color(
+                  0xFFD4AF37,
+                ),
+                foregroundColor:
+                    const Color(
+                  0xFF0D0D0F,
+                ),
+              ),
+              child:
+                  Text(
+                buttonText,
+                style:
+                    const TextStyle(
+                  fontWeight:
+                      FontWeight.w900,
+                  letterSpacing:
+                      0.7,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBuilderBody(
+    LatLng startingPosition,
+  ) {
+    final isManual =
+        _mode ==
+            _CrawlBuildMode.manual;
+
+    final isLoading =
+        isManual
+            ? _manualLoading
+            : _loading;
+
+    final venues =
+        isManual
+            ? _manualVenues
+            : _venues;
+
+    return _error != null
+        ? _errorView()
+        : isLoading
+            ? const Center(
+                child:
+                    CircularProgressIndicator(
+                  color:
+                      Color(0xFFD4AF37),
+                ),
+              )
+            : Column(
+                children: [
+                  Expanded(
+                    flex: 5,
+                    child:
+                        GoogleMap(
+                      initialCameraPosition:
+                          CameraPosition(
+                        target:
+                            startingPosition,
+                        zoom: 14,
+                      ),
+                      onMapCreated:
+                          (controller) {
+                        _mapController =
+                            controller;
+                        _fitMapToVenues(
+                          venues,
+                        );
+                      },
+                      markers:
+                          _markers(),
+                      myLocationButtonEnabled:
+                          true,
+                      myLocationEnabled:
+                          true,
+                      zoomControlsEnabled:
+                          false,
+                      mapToolbarEnabled:
+                          false,
+                    ),
+                  ),
+                  Expanded(
+                    flex: 5,
+                    child:
+                        isManual
+                            ? _manualDetails()
+                            : _decisionParalysisDetails(),
+                  ),
+                ],
+              );
   }
 
   Widget _errorView() {
@@ -605,31 +1001,50 @@ class _CrawlBuilderScreenState
           children: [
             const Icon(
               Icons.error_outline,
-              color: Color(0xFFD4AF37),
+              color:
+                  Color(0xFFD4AF37),
               size: 48,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(
+              height: 16,
+            ),
             const Text(
               'WE COULDN\'T BUILD YOUR CRAWL',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w900,
+              textAlign:
+                  TextAlign.center,
+              style:
+                  TextStyle(
+                color:
+                    Colors.white,
+                fontWeight:
+                    FontWeight.w900,
                 fontSize: 18,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(
+              height: 8,
+            ),
             Text(
               _error!,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white60,
+              textAlign:
+                  TextAlign.center,
+              style:
+                  const TextStyle(
+                color:
+                    Colors.white60,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(
+              height: 20,
+            ),
             FilledButton(
-              onPressed: _buildCrawl,
-              child: const Text(
+              onPressed:
+                  _mode ==
+                          _CrawlBuildMode.manual
+                      ? _selectManualBuild
+                      : _selectDecisionParalysis,
+              child:
+                  const Text(
                 'TRY AGAIN',
               ),
             ),
@@ -639,9 +1054,10 @@ class _CrawlBuilderScreenState
     );
   }
 
-  Widget _crawlDetails() {
+  Widget _decisionParalysisDetails() {
     return Container(
-      width: double.infinity,
+      width:
+          double.infinity,
       padding:
           const EdgeInsets.fromLTRB(
         20,
@@ -649,50 +1065,71 @@ class _CrawlBuilderScreenState
         20,
         20,
       ),
-      decoration: const BoxDecoration(
-        color: Color(0xFF0D0D0F),
+      decoration:
+          const BoxDecoration(
+        color:
+            Color(0xFF0D0D0F),
       ),
       child: Column(
         crossAxisAlignment:
             CrossAxisAlignment.start,
         children: [
-          Text(
-            widget.startingPoint.name,
-            style: const TextStyle(
-              color: Color(0xFFD4AF37),
+          const Text(
+            'DECISION PARALYSIS',
+            style:
+                TextStyle(
+              color:
+                  Color(0xFFD4AF37),
               fontSize: 13,
-              fontWeight: FontWeight.w900,
+              fontWeight:
+                  FontWeight.w900,
               letterSpacing: 1,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(
+            height: 6,
+          ),
           Text(
             _venues.isEmpty
                 ? 'NO STOPS FOUND'
                 : '${_venues.length} STOPS SELECTED',
-            style: const TextStyle(
-              color: Colors.white,
+            style:
+                const TextStyle(
+              color:
+                  Colors.white,
               fontSize: 24,
-              fontWeight: FontWeight.w900,
+              fontWeight:
+                  FontWeight.w900,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(
+            height: 6,
+          ),
           Text(
-            'Searching within ${_selectedDistanceText()}',
-            style: const TextStyle(
-              color: Colors.white54,
+            'Searching within '
+            '${_selectedDistanceText()}',
+            style:
+                const TextStyle(
+              color:
+                  Colors.white54,
               fontSize: 13,
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(
+            height: 14,
+          ),
           if (_venues.isEmpty)
             const Expanded(
-              child: Center(
+              child:
+                  Center(
                 child: Text(
                   'We couldn\'t find enough eligible reviewed venues within your selected distance.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white60,
+                  textAlign:
+                      TextAlign.center,
+                  style:
+                      TextStyle(
+                    color:
+                        Colors.white60,
                     fontSize: 14,
                     height: 1.4,
                   ),
@@ -701,7 +1138,8 @@ class _CrawlBuilderScreenState
             )
           else
             Expanded(
-              child: ListView.separated(
+              child:
+                  ListView.separated(
                 itemCount:
                     _venues.length,
                 separatorBuilder:
@@ -714,150 +1152,447 @@ class _CrawlBuilderScreenState
                   final venue =
                       _venues[index];
 
-                  final distance =
-                      _distanceFromStartingPoint(
+                  return _venueTile(
                     venue,
-                  );
-
-                  return Container(
-                    padding:
-                        const EdgeInsets
-                            .symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    decoration:
-                        BoxDecoration(
-                      color:
-                          const Color(
-                        0xFF1C1C1E,
-                      ),
-                      borderRadius:
-                          BorderRadius
-                              .circular(
-                        12,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 32,
-                          height: 32,
-                          alignment:
-                              Alignment
-                                  .center,
-                          decoration:
-                              BoxDecoration(
-                            color:
-                                const Color(
-                              0xFFD4AF37,
-                            ),
-                            borderRadius:
-                                BorderRadius
-                                    .circular(
-                              8,
-                            ),
-                          ),
-                          child: Text(
-                            '${index + 1}',
-                            style:
-                                const TextStyle(
-                              color:
-                                  Color(
-                                0xFF0D0D0F,
-                              ),
-                              fontWeight:
-                                  FontWeight
-                                      .w900,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(
-                          width: 12,
-                        ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment
-                                    .start,
-                            children: [
-                              Text(
-                                venue.title,
-                                maxLines: 1,
-                                overflow:
-                                    TextOverflow
-                                        .ellipsis,
-                                style:
-                                    const TextStyle(
-                                  color:
-                                      Colors
-                                          .white,
-                                  fontWeight:
-                                      FontWeight
-                                          .w800,
-                                ),
-                              ),
-                              const SizedBox(
-                                height: 3,
-                              ),
-                              Text(
-                                _distanceText(
-                                  distance,
-                                ),
-                                style:
-                                    const TextStyle(
-                                  color:
-                                      Colors
-                                          .white54,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const Icon(
-                          Icons
-                              .drag_indicator,
-                          color:
-                              Colors.white24,
-                        ),
-                      ],
-                    ),
+                    index:
+                        index,
+                    showDrag:
+                        false,
                   );
                 },
               ),
             ),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: FilledButton(
-              onPressed:
-                  _venues.isEmpty
-                      ? null
-                      : _startCrawl,
-              style:
-                  FilledButton.styleFrom(
-                backgroundColor:
-                    const Color(
-                  0xFFD4AF37,
-                ),
-                foregroundColor:
-                    const Color(
-                  0xFF0D0D0F,
+          const SizedBox(
+            height: 14,
+          ),
+          _startButton(
+            enabled:
+                _venues.isNotEmpty,
+            onPressed:
+                _startCrawl,
+            label:
+                'START CRAWL',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _manualDetails() {
+    return Container(
+      width:
+          double.infinity,
+      padding:
+          const EdgeInsets.fromLTRB(
+        20,
+        18,
+        20,
+        20,
+      ),
+      decoration:
+          const BoxDecoration(
+        color:
+            Color(0xFF0D0D0F),
+      ),
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'MANUAL BUILD',
+            style:
+                TextStyle(
+              color:
+                  Color(0xFFD4AF37),
+              fontSize: 13,
+              fontWeight:
+                  FontWeight.w900,
+              letterSpacing: 1,
+            ),
+          ),
+          const SizedBox(
+            height: 6,
+          ),
+          Text(
+            '${_manualVenues.length} STOPS SELECTED',
+            style:
+                const TextStyle(
+              color:
+                  Colors.white,
+              fontSize: 24,
+              fontWeight:
+                  FontWeight.w900,
+            ),
+          ),
+          const SizedBox(
+            height: 6,
+          ),
+          Text(
+            'Choose your stops. '
+            'You need ${widget.configuration.stopCount}.',
+            style:
+                const TextStyle(
+              color:
+                  Colors.white54,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(
+            height: 14,
+          ),
+          if (_manualVenues.isEmpty)
+            const Expanded(
+              child:
+                  Center(
+                child: Text(
+                  'No eligible venues were found within your selected distance.',
+                  textAlign:
+                      TextAlign.center,
+                  style:
+                      TextStyle(
+                    color:
+                        Colors.white60,
+                    fontSize: 14,
+                  ),
                 ),
               ),
-              child: const Text(
+            )
+          else
+            Expanded(
+              child:
+                  ReorderableListView.builder(
+                itemCount:
+                    _manualVenues.length,
+                buildDefaultDragHandles:
+                    true,
+                onReorder:
+                    _reorderManualVenues,
+                itemBuilder:
+                    (context, index) {
+                  final venue =
+                      _manualVenues[index];
+
+                  return _manualVenueTile(
+                    venue,
+                    index,
+                  );
+                },
+              ),
+            ),
+          const SizedBox(
+            height: 14,
+          ),
+          _startButton(
+            enabled:
+                _manualVenues.length >=
+                    widget.configuration
+                        .stopCount,
+            onPressed:
+                _startManualCrawl,
+            label:
                 'START CRAWL',
-                style: TextStyle(
-                  fontWeight:
-                      FontWeight.w900,
-                  letterSpacing: 0.8,
-                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _venueTile(
+    NearbyResult venue, {
+    required int index,
+    required bool showDrag,
+  }) {
+    final distance =
+        _distanceFromStartingPoint(
+      venue,
+    );
+
+    return Container(
+      key:
+          ValueKey(
+        '${venue.type}:${venue.slug}:$index',
+      ),
+      padding:
+          const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 12,
+      ),
+      decoration:
+          BoxDecoration(
+        color:
+            const Color(0xFF1C1C1E),
+        borderRadius:
+            BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            alignment:
+                Alignment.center,
+            decoration:
+                BoxDecoration(
+              color:
+                  const Color(
+                0xFFD4AF37,
+              ),
+              borderRadius:
+                  BorderRadius.circular(
+                8,
+              ),
+            ),
+            child: Text(
+              '${index + 1}',
+              style:
+                  const TextStyle(
+                color:
+                    Color(0xFF0D0D0F),
+                fontWeight:
+                    FontWeight.w900,
               ),
             ),
           ),
+          const SizedBox(
+            width: 12,
+          ),
+          Expanded(
+            child:
+                Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  venue.title,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style:
+                      const TextStyle(
+                    color:
+                        Colors.white,
+                    fontWeight:
+                        FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(
+                  height: 3,
+                ),
+                Text(
+                  _distanceText(
+                    distance,
+                  ),
+                  style:
+                      const TextStyle(
+                    color:
+                        Colors.white54,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (showDrag)
+            const Icon(
+              Icons.drag_indicator,
+              color:
+                  Colors.white24,
+            ),
         ],
+      ),
+    );
+  }
+
+  Widget _manualVenueTile(
+    NearbyResult venue,
+    int index,
+  ) {
+    final distance =
+        _distanceFromStartingPoint(
+      venue,
+    );
+
+    return Container(
+      key:
+          ValueKey(
+        '${venue.type}:${venue.slug}',
+      ),
+      margin:
+          const EdgeInsets.only(
+        bottom: 8,
+      ),
+      padding:
+          const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 10,
+      ),
+      decoration:
+          BoxDecoration(
+        color:
+            const Color(0xFF1C1C1E),
+        borderRadius:
+            BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            alignment:
+                Alignment.center,
+            decoration:
+                BoxDecoration(
+              color:
+                  const Color(
+                0xFFD4AF37,
+              ),
+              borderRadius:
+                  BorderRadius.circular(
+                8,
+              ),
+            ),
+            child: Text(
+              '${index + 1}',
+              style:
+                  const TextStyle(
+                color:
+                    Color(0xFF0D0D0F),
+                fontWeight:
+                    FontWeight.w900,
+              ),
+            ),
+          ),
+          const SizedBox(
+            width: 12,
+          ),
+          Expanded(
+            child:
+                Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  venue.title,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style:
+                      const TextStyle(
+                    color:
+                        Colors.white,
+                    fontWeight:
+                        FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(
+                  height: 3,
+                ),
+                Text(
+                  _distanceText(
+                    distance,
+                  ),
+                  style:
+                      const TextStyle(
+                    color:
+                        Colors.white54,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Remove stop',
+            onPressed: () {
+              setState(() {
+                _manualVenues.removeAt(index);
+              });
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  _fitMapToManualVenues();
+                }
+              });
+            },
+            icon: const Icon(
+              Icons.delete_outline,
+              color: Colors.white54,
+            ),
+          ),
+          const Icon(
+            Icons.drag_handle,
+            color:
+                Colors.white38,
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _reorderManualVenues(
+    int oldIndex,
+    int newIndex,
+  ) {
+    setState(() {
+      if (newIndex > oldIndex) {
+        newIndex -= 1;
+      }
+
+      final venue =
+          _manualVenues.removeAt(
+        oldIndex,
+      );
+
+      _manualVenues.insert(
+        newIndex,
+        venue,
+      );
+    });
+
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) {
+      if (mounted) {
+        _fitMapToManualVenues();
+      }
+    });
+  }
+
+  Widget _startButton({
+    required bool enabled,
+    required VoidCallback onPressed,
+    required String label,
+  }) {
+    return SizedBox(
+      width:
+          double.infinity,
+      height: 52,
+      child:
+          FilledButton(
+        onPressed:
+            enabled
+                ? onPressed
+                : null,
+        style:
+            FilledButton.styleFrom(
+          backgroundColor:
+              const Color(
+            0xFFD4AF37,
+          ),
+          foregroundColor:
+              const Color(
+            0xFF0D0D0F,
+          ),
+        ),
+        child:
+            Text(
+          label,
+          style:
+              const TextStyle(
+            fontWeight:
+                FontWeight.w900,
+            letterSpacing:
+                0.8,
+          ),
+        ),
       ),
     );
   }
@@ -940,7 +1675,8 @@ double _mathAtan2(
 }
 
 double _atan(double value) {
-  final absolute = value.abs();
+  final absolute =
+      value.abs();
 
   if (absolute <= 1) {
     var result = 0.0;
@@ -954,7 +1690,9 @@ double _atan(double value) {
           power / denominator;
 
       result +=
-          n.isEven ? term : -term;
+          n.isEven
+              ? term
+              : -term;
 
       power *=
           value * value;
@@ -967,5 +1705,7 @@ double _atan(double value) {
       3.141592653589793 / 2 -
           _atan(1 / absolute);
 
-  return value < 0 ? -result : result;
+  return value < 0
+      ? -result
+      : result;
 }

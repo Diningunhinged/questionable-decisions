@@ -9,6 +9,7 @@ import '../services/crawl_test_locations.dart';
 import 'crawl_map_picker_screen.dart';
 import '../../../services/location_service.dart';
 import '../widgets/crawl_location_search.dart';
+import 'crawl_builder_screen.dart';
 import '../../../screens/crawl_screen.dart';
 
 class CrawlHomeScreen extends StatefulWidget {
@@ -125,8 +126,9 @@ class _CrawlHomeScreenState
               ),
               const SizedBox(height: 10),
               _walkingDistanceSelector(),
+              const SizedBox(height: 28),
+              _crawlModeSelector(),
               const SizedBox(height: 32),
-              _startButton(),
             ],
           ),
         ),
@@ -142,6 +144,108 @@ class _CrawlHomeScreenState
         fontSize: 13,
         fontWeight: FontWeight.w900,
         letterSpacing: 1.2,
+      ),
+    );
+  }
+
+  Widget _crawlModeSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _crawlModeButton(
+          title: 'DECISION PARALYSIS',
+          subtitle:
+              'You make the parameters. We make the decisions.',
+          icon: Icons.psychology_alt_outlined,
+          filled: true,
+          onPressed: _startDecisionParalysis,
+        ),
+        const SizedBox(height: 10),
+        _crawlModeButton(
+          title: 'MANUAL BUILD',
+          subtitle:
+              'Choose, delete, and reorder your stops.',
+          icon: Icons.tune,
+          filled: false,
+          onPressed: _startManualBuild,
+        ),
+      ],
+    );
+  }
+
+  Widget _crawlModeButton({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool filled,
+    required VoidCallback onPressed,
+  }) {
+    final child = Row(
+      children: [
+        Icon(icon, size: 28),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.8,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  color: filled
+                      ? const Color(0xFF0D0D0F)
+                          .withValues(alpha: 0.70)
+                      : Colors.white60,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        const Icon(Icons.arrow_forward),
+      ],
+    );
+
+    if (filled) {
+      return SizedBox(
+        width: double.infinity,
+        child: FilledButton(
+          onPressed: onPressed,
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFFD4AF37),
+            foregroundColor: const Color(0xFF0D0D0F),
+            padding: const EdgeInsets.all(16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+          child: child,
+        ),
+      );
+    }
+
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton(
+        onPressed: onPressed,
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Colors.white,
+          side: const BorderSide(color: Colors.white24),
+          padding: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+        child: child,
       ),
     );
   }
@@ -244,7 +348,7 @@ class _CrawlHomeScreenState
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'TEST GPS ACTIVE — '
+                      'TEST GPS ACTIVE ΓÇö '
                       'phone location is being simulated.',
                       style: TextStyle(
                         color:
@@ -770,38 +874,6 @@ class _CrawlHomeScreenState
     );
   }
 
-  Widget _startButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: FilledButton(
-        onPressed: _startCrawl,
-        style:
-            FilledButton.styleFrom(
-          backgroundColor:
-              const Color(0xFFD4AF37),
-          foregroundColor:
-              const Color(0xFF0D0D0F),
-          padding:
-              const EdgeInsets.symmetric(
-            vertical: 17,
-          ),
-          shape:
-              RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular(14),
-          ),
-        ),
-        child: const Text(
-          'BUILD MY CRAWL',
-          style: TextStyle(
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0.8,
-          ),
-        ),
-      ),
-    );
-  }
-
   void _setSize(CrawlSize size) {
     setState(() {
       _configuration =
@@ -1092,62 +1164,92 @@ class _CrawlHomeScreenState
     );
   }
 
-  void _startCrawl() {
-  _updateWalkingDistance();
+  void _startDecisionParalysis() {
+    _updateWalkingDistance();
 
-  if (_startingPoint == null) {
-    setState(() {
-      _locationError = 'Please choose a starting point first.';
-    });
-    return;
+    if (_startingPoint == null) {
+      setState(() {
+        _locationError =
+            'Please choose a starting point first.';
+      });
+      return;
+    }
+
+    debugPrint('CRAWL MODE: DECISION PARALYSIS');
+
+    _openCrawlScreen();
   }
 
-  debugPrint('CRAWL CONFIGURATION');
+  void _startManualBuild() {
+    _updateWalkingDistance();
 
-  debugPrint(
-    'Starting point: ${_startingPoint!.name}',
-  );
+    if (_startingPoint == null) {
+      setState(() {
+        _locationError =
+            'Please choose a starting point first.';
+      });
+      return;
+    }
 
-  debugPrint(
-    'Coordinates: '
-    '${_startingPoint!.latitude}, '
-    '${_startingPoint!.longitude}',
-  );
+    debugPrint('CRAWL MODE: MANUAL BUILD');
 
-  debugPrint(
-    'Stops: '
-    '${_configuration.stopCount}',
-  );
-
-  debugPrint(
-    'Categories: '
-    '${_configuration.categories}',
-  );
-
-  debugPrint(
-    'Walking distance: '
-    '${_configuration.displayedWalkingDistance} '
-    '${_configuration.walkingDistanceUnitLabel}',
-  );
-
-  debugPrint(
-    'Walking distance metres: '
-    '${_configuration.walkingDistanceMeters}',
-  );
-
-  if (kDebugMode) {
-    debugPrint(
-      'Debug GPS active: '
-      '${LocationService.isUsingDebugLocation}',
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CrawlBuilderScreen(
+          configuration: _configuration,
+          startingPoint: _startingPoint!,
+        ),
+      ),
     );
   }
 
-  Navigator.of(context).push(
-    MaterialPageRoute(
-      builder: (_) => CrawlScreen(
-        configuration: _configuration,
+  void _openCrawlScreen() {
+    debugPrint('CRAWL CONFIGURATION');
+
+    debugPrint(
+      'Starting point: ${_startingPoint!.name}',
+    );
+
+    debugPrint(
+      'Coordinates: '
+      '${_startingPoint!.latitude}, '
+      '${_startingPoint!.longitude}',
+    );
+
+    debugPrint(
+      'Stops: '
+      '${_configuration.stopCount}',
+    );
+
+    debugPrint(
+      'Categories: '
+      '${_configuration.categories}',
+    );
+
+    debugPrint(
+      'Walking distance: '
+      '${_configuration.displayedWalkingDistance} '
+      '${_configuration.walkingDistanceUnitLabel}',
+    );
+
+    debugPrint(
+      'Walking distance metres: '
+      '${_configuration.walkingDistanceMeters}',
+    );
+
+    if (kDebugMode) {
+      debugPrint(
+        'Debug GPS active: '
+        '${LocationService.isUsingDebugLocation}',
+      );
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CrawlScreen(
+          configuration: _configuration,
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 }

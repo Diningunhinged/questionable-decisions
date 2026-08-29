@@ -13,10 +13,14 @@ import '../services/notification_service.dart';
 
 class CrawlScreen extends StatefulWidget {
   final CrawlConfiguration configuration;
+  final List<NearbyResult>? manualStops;
+  final bool autoStart;
 
   const CrawlScreen({
     super.key,
     this.configuration = const CrawlConfiguration(),
+    this.manualStops,
+    this.autoStart = false,
   });
 
   @override
@@ -109,6 +113,19 @@ class _CrawlScreenState
     }
 
     return '${_encounterDistanceMeters.round()} m';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+
+    if (widget.autoStart) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _startCrawl();
+        }
+      });
+    }
   }
 
   @override
@@ -207,10 +224,14 @@ class _CrawlScreenState
               .toList();
 
       final crawlStops =
-          _buildCrawlStops(
-        categoryResults,
-        position,
-      );
+          widget.manualStops != null
+              ? List<NearbyResult>.from(
+                  widget.manualStops!,
+                )
+              : _buildCrawlStops(
+                  categoryResults,
+                  position,
+                );
 
       setState(() {
         _currentPosition = position;
@@ -578,9 +599,9 @@ class _CrawlScreenState
 
     final message = isComplete
         ? 'YOU HAVE ARRIVED AT '
-            '$arrivedName • CRAWL COMPLETE'
+            '$arrivedName - CRAWL COMPLETE'
         : 'ARRIVED AT '
-            '$arrivedName • '
+            '$arrivedName - '
             'NEXT: ${nextStop!.title}';
 
     ScaffoldMessenger.of(context)
@@ -1656,7 +1677,7 @@ class _CrawlScreenState
               height: 10,
             ),
             Text(
-              '$encounteredCount encountered • '
+              '$encounteredCount encountered - '
               '${_results.length} reviewed spots in range',
               style:
                   const TextStyle(
@@ -2165,10 +2186,10 @@ class _CrawlStopTile
         ),
         subtitle: Text(
           encountered
-              ? 'ARRIVED • '
+              ? 'ARRIVED - '
                   '$distanceText'
               : active
-                  ? 'NEXT STOP • '
+                  ? 'NEXT STOP - '
                       '$distanceText'
                   : distanceText,
           style: TextStyle(
@@ -2309,7 +2330,7 @@ class _CrawlResultTile
         ),
         subtitle: Text(
           encountered
-              ? 'ENCOUNTERED • '
+              ? 'ENCOUNTERED - '
                   '$distanceText'
               : distanceText,
           style: TextStyle(
