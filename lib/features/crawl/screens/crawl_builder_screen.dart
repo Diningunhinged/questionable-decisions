@@ -6,6 +6,8 @@ import '../../../services/dining_unhinged_api.dart';
 import '../../../screens/crawl_screen.dart';
 import '../models/crawl_configuration.dart';
 import '../models/crawl_starting_point.dart';
+import '../models/saved_crawl.dart';
+import '../services/saved_store.dart';
 
 enum _CrawlBuildMode {
   choose,
@@ -673,6 +675,60 @@ class _CrawlBuilderScreenState
     );
   }
 
+  Future<void> _saveManualCrawl() async {
+    if (_manualVenues.length < widget.configuration.stopCount) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              'Select at least '
+              '${widget.configuration.stopCount} stops '
+              'before saving.',
+            ),
+          ),
+        );
+      return;
+    }
+
+    final draft = await showDialog<_SaveCrawlDraft>(
+      context: context,
+      useRootNavigator: true,
+      builder: (dialogContext) {
+        return const _SaveCrawlDialog();
+      },
+    );
+
+    if (!mounted || draft == null) {
+      return;
+    }
+
+    final crawl = SavedCrawl(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      name: draft.name,
+      plannedDate: draft.plannedDate,
+      configuration: widget.configuration,
+      startingPoint: widget.startingPoint,
+      stops: List<NearbyResult>.from(_manualVenues),
+    );
+
+    await saveCrawl(crawl);
+
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            '"${draft.name}" saved to Saved Crawls.',
+          ),
+        ),
+      );
+  }
+
   void _startManualCrawl() {
     if (_manualVenues.isEmpty) {
       return;
@@ -1282,15 +1338,30 @@ class _CrawlBuilderScreenState
           const SizedBox(
             height: 14,
           ),
-          _startButton(
-            enabled:
-                _manualVenues.length >=
-                    widget.configuration
-                        .stopCount,
-            onPressed:
-                _startManualCrawl,
-            label:
-                'START CRAWL',
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _manualVenues.length >= widget.configuration.stopCount
+                      ? _saveManualCrawl
+                      : null,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFD4AF37),
+                    side: const BorderSide(color: Color(0xFFD4AF37)),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                  child: const Text('SAVE CRAWL', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.7)),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _startButton(
+                  enabled: _manualVenues.length >= widget.configuration.stopCount,
+                  onPressed: _startManualCrawl,
+                  label: 'START CRAWL',
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -1597,6 +1668,183 @@ class _CrawlBuilderScreenState
     );
   }
 }
+
+
+class _SaveCrawlDraft {
+  final String name;
+  final DateTime plannedDate;
+
+  const _SaveCrawlDraft({
+    required this.name,
+    required this.plannedDate,
+  });
+}
+
+class _SaveCrawlDialog extends StatefulWidget {
+  const _SaveCrawlDialog();
+
+  @override
+  State<_SaveCrawlDialog> createState() =>
+      _SaveCrawlDialogState();
+}
+
+class _SaveCrawlDialogState
+    extends State<_SaveCrawlDialog> {
+  late final TextEditingController _nameController;
+  DateTime _selectedDate = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(
+        const Duration(days: 3650),
+      ),
+    );
+
+    if (!mounted || picked == null) {
+      return;
+    }
+
+    setState(() {
+      _selectedDate = picked;
+    });
+  }
+
+  void _save() {
+    final name = _nameController.text.trim();
+
+    if (name.isEmpty) {
+      return;
+    }
+
+    Navigator.of(context).pop(
+      _SaveCrawlDraft(
+        name: name,
+        plannedDate: _selectedDate,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFF1C1C1E),
+      title: const Text(
+        'SAVE YOUR CRAWL',
+        style: TextStyle(
+          color: Color(0xFFD4AF37),
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _nameController,
+            style: const TextStyle(
+              color: Colors.white,
+            ),
+            textCapitalization:
+                TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              labelText: 'Crawl name',
+              labelStyle: TextStyle(
+                color: Colors.white54,
+              ),
+              hintText:
+                  'Friday Night Degeneracy',
+              hintStyle: TextStyle(
+                color: Colors.white24,
+              ),
+              enabledBorder:
+                  UnderlineInputBorder(
+                borderSide: BorderSide(
+                  color: Colors.white24,
+                ),
+              ),
+              focusedBorder:
+                  UnderlineInputBorder(
+                borderSide: BorderSide(
+                  color: Color(0xFFD4AF37),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text(
+              'PLANNED DATE',
+              style: TextStyle(
+                color: Color(0xFFD4AF37),
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1,
+              ),
+            ),
+            subtitle: Text(
+              '${_selectedDate.year}-'
+              '${_selectedDate.month.toString().padLeft(2, '0')}-'
+              '${_selectedDate.day.toString().padLeft(2, '0')}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+              ),
+            ),
+            trailing: const Icon(
+              Icons.calendar_month,
+              color: Color(0xFFD4AF37),
+            ),
+            onTap: _pickDate,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop();
+          },
+          child: const Text(
+            'CANCEL',
+            style: TextStyle(
+              color: Colors.white54,
+            ),
+          ),
+        ),
+        FilledButton(
+          onPressed: _save,
+          style: FilledButton.styleFrom(
+            backgroundColor:
+                const Color(0xFFD4AF37),
+            foregroundColor:
+                const Color(0xFF0D0D0F),
+          ),
+          child: const Text(
+            'SAVE CRAWL',
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 
 double _mathSin(double value) {
   var term = value;
