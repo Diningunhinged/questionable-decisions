@@ -10,7 +10,6 @@ import '../models/saved_crawl.dart';
 import '../services/saved_store.dart';
 
 enum _CrawlBuildMode {
-  choose,
   manual,
   decisionParalysis,
 }
@@ -823,184 +822,6 @@ class _CrawlBuilderScreenState
     );
   }
 
-  Widget _buildModeChoice() {
-    return ListView(
-      padding:
-          const EdgeInsets.fromLTRB(
-        20,
-        28,
-        20,
-        30,
-      ),
-      children: [
-        const Text(
-          'HOW DO YOU WANT TO CRAWL?',
-          style: TextStyle(
-            color:
-                Color(0xFFD4AF37),
-            fontSize: 13,
-            fontWeight:
-                FontWeight.w900,
-            letterSpacing: 1.4,
-          ),
-        ),
-        const SizedBox(
-          height: 10,
-        ),
-        const Text(
-          'You can make the questionable decisions yourself. Or surrender the responsibility entirely.',
-          style: TextStyle(
-            color:
-                Colors.white70,
-            fontSize: 17,
-            height: 1.4,
-          ),
-        ),
-        const SizedBox(
-          height: 28,
-        ),
-        _buildModeCard(
-          icon:
-              Icons.touch_app_outlined,
-          title:
-              'MANUAL BUILD',
-          description:
-              'You choose the stops. You decide the order. You own this.',
-          buttonText:
-              'BUILD IT MYSELF',
-          onPressed:
-              _manualLoading
-                  ? null
-                  : _selectManualBuild,
-        ),
-        const SizedBox(
-          height: 16,
-        ),
-        _buildModeCard(
-          icon:
-              Icons.psychology_outlined,
-          title:
-              'DECISION PARALYSIS',
-          description:
-              'Can\'t decide? Perfect. Let Questionable Decisions make the questionable decisions for you.',
-          buttonText:
-              'REMOVE MY RESPONSIBILITY',
-          onPressed:
-              _loading
-                  ? null
-                  : _selectDecisionParalysis,
-          featured: true,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildModeCard({
-    required IconData icon,
-    required String title,
-    required String description,
-    required String buttonText,
-    required VoidCallback? onPressed,
-    bool featured = false,
-  }) {
-    return Container(
-      padding:
-          const EdgeInsets.all(20),
-      decoration:
-          BoxDecoration(
-        color:
-            const Color(0xFF1C1C1E),
-        borderRadius:
-            BorderRadius.circular(18),
-        border: Border.all(
-          color: featured
-              ? const Color(
-                  0xFFD4AF37,
-                )
-              : Colors.white10,
-          width:
-              featured ? 1.3 : 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          Icon(
-            icon,
-            color:
-                const Color(0xFFD4AF37),
-            size: 42,
-          ),
-          const SizedBox(
-            height: 14,
-          ),
-          Text(
-            title,
-            style:
-                const TextStyle(
-              color:
-                  Colors.white,
-              fontSize: 22,
-              fontWeight:
-                  FontWeight.w900,
-              letterSpacing:
-                  0.8,
-            ),
-          ),
-          const SizedBox(
-            height: 8,
-          ),
-          Text(
-            description,
-            style:
-                const TextStyle(
-              color:
-                  Colors.white60,
-              fontSize: 14,
-              height: 1.4,
-            ),
-          ),
-          const SizedBox(
-            height: 18,
-          ),
-          SizedBox(
-            width:
-                double.infinity,
-            height: 50,
-            child:
-                FilledButton(
-              onPressed:
-                  onPressed,
-              style:
-                  FilledButton.styleFrom(
-                backgroundColor:
-                    const Color(
-                  0xFFD4AF37,
-                ),
-                foregroundColor:
-                    const Color(
-                  0xFF0D0D0F,
-                ),
-              ),
-              child:
-                  Text(
-                buttonText,
-                style:
-                    const TextStyle(
-                  fontWeight:
-                      FontWeight.w900,
-                  letterSpacing:
-                      0.7,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildBuilderBody(
     LatLng startingPosition,
   ) {
@@ -1346,8 +1167,7 @@ class _CrawlBuilderScreenState
                     _manualVenues.length,
                 buildDefaultDragHandles:
                     true,
-                onReorder:
-                    _reorderManualVenues,
+                onReorderItem: _reorderManualVenues,
                 itemBuilder:
                     (context, index) {
                   final venue =

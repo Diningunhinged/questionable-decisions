@@ -2,7 +2,6 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../models/nearby_result.dart';
 import '../services/dining_unhinged_api.dart';
@@ -260,58 +259,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
         );
       },
     );
-  }
-
-  Future<void> _openReview(NearbyResult result) async {
-    /*
-     * Dining Unhinged uses different routes for venue reviews
-     * and drink reviews.
-     *
-     * Venues:
-     *   /venues/pip
-     *
-     * Drinks:
-     *   /drinks/mezcal-mule
-     *
-     * The API already tells us which type of result we have,
-     * so we use that instead of guessing the URL.
-     */
-    final section = result.isDrink ? 'drinks' : 'venues';
-
-    final url = Uri.parse(
-      'https://www.diningunhinged.ca/$section/${result.slug}',
-    );
-
-    debugPrint('OPEN REVIEW: $url');
-
-    try {
-      final launched = await launchUrl(
-        url,
-        mode: LaunchMode.externalApplication,
-      );
-
-      if (!launched && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              "Couldn't open the Dining Unhinged review.",
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('OPEN REVIEW ERROR: $e');
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "Couldn't open the Dining Unhinged review.",
-          ),
-        ),
-      );
-    }
   }
 
   @override

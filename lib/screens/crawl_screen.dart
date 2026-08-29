@@ -1102,9 +1102,6 @@ class _CrawlScreenState
   Widget build(
     BuildContext context,
   ) {
-    final encounteredCount =
-        _encountered.length;
-
     final debugLocationActive =
         kDebugMode &&
         LocationService

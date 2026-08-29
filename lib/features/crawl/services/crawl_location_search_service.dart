@@ -3,8 +3,8 @@ import 'location_search_provider.dart';
 
 class CrawlLocationSearchService {
   CrawlLocationSearchService({
-    required LocationSearchProvider provider,
-  }) : _provider = provider;
+  required this._provider,
+});
 
   final LocationSearchProvider _provider;
 

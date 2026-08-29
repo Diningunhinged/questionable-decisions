@@ -8,8 +8,8 @@ import 'location_search_provider.dart';
 class NominatimLocationSearchProvider
     implements LocationSearchProvider {
   const NominatimLocationSearchProvider({
-    http.Client? client,
-  }) : _client = client;
+  this._client,
+});
 
   static const String _baseUrl =
       'https://nominatim.openstreetmap.org/search';

@@ -475,8 +475,8 @@ class _SavedScreenState extends State<SavedScreen> {
         28,
       ),
       itemCount: saved.length,
-      separatorBuilder: (_, __) =>
-          const SizedBox(height: 14),
+      separatorBuilder: (_, _) =>
+    const SizedBox(height: 14),
       itemBuilder: (context, index) {
         final result = saved[index];
 
@@ -505,8 +505,8 @@ class _SavedScreenState extends State<SavedScreen> {
                       width: 76,
                       height: 76,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          _savedPlaceholder(),
+                      errorBuilder: (_, _, _) =>
+    _savedPlaceholder(),
                     ),
                   )
                 else
