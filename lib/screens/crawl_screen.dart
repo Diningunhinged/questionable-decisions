@@ -339,7 +339,13 @@ class _CrawlScreenState extends State<CrawlScreen> {
     _checkForEncounters(position);
   }
 
-  static const double _arrivalDistanceMeters = 10.0;
+  /// Distance from a venue's GPS coordinates at which the
+  /// Crawl considers the user to have arrived.
+  ///
+  /// This is separate from the 500 m nearby-notification radius.
+  /// A larger radius accounts for normal GPS variation around buildings
+  /// and venue entrances.
+  static const double _arrivalDistanceMeters = 50.0;
 
   void _checkForEncounters(Position position) {
     if (_activeStopIndex >= _crawlStops.length) {
