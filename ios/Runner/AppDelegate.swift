@@ -10,7 +10,14 @@ import GoogleMaps
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
 
-    GMSServices.provideAPIKey(AIzaSyAXgduRvVDAvKs9qYrxK2Wbnzr7jysxHv0)
+    guard let apiKey = Bundle.main.object(
+      forInfoDictionaryKey: "GOOGLE_MAPS_API_KEY"
+    ) as? String,
+    !apiKey.isEmpty else {
+      fatalError("GOOGLE_MAPS_API_KEY is not configured")
+    }
+
+    GMSServices.provideAPIKey(apiKey)
 
     return super.application(
       application,
