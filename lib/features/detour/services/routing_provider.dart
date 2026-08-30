@@ -6,5 +6,6 @@ abstract class RoutingProvider {
     required DetourEndpoint start,
     required DetourEndpoint destination,
     List<DetourEndpoint> waypoints = const [],
+    bool optimizeWaypointOrder = true,
   });
 }

@@ -44,6 +44,9 @@ class _DetourScreenState extends State<DetourScreen> {
   // eligible venues; the screen keeps them so they can be shown as stops.
   List<DetourVenue> _optimizedStops = [];
 
+  bool _editingRoute = false;
+  List<DetourVenue> _editingStops = [];
+
   GoogleMapController? _detourMapController;
 
   DetourPreferences _preferences =
@@ -488,6 +491,127 @@ class _DetourScreenState extends State<DetourScreen> {
 
       _showMessage(
         'Could not calculate the detour. '
+        'Please try again.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _planning = false;
+        });
+      }
+    }
+  }
+
+  void _startEditingRoute() {
+    if (_optimizedStops.isEmpty || _planning) {
+      return;
+    }
+
+    setState(() {
+      _editingRoute = true;
+      _editingStops = List<DetourVenue>.from(
+        _optimizedStops,
+      );
+    });
+  }
+
+  void _cancelEditingRoute() {
+    setState(() {
+      _editingRoute = false;
+      _editingStops = [];
+    });
+  }
+
+  void _reorderEditingStops(
+    int oldIndex,
+    int newIndex,
+  ) {
+    setState(() {
+      if (newIndex > oldIndex) {
+        newIndex -= 1;
+      }
+
+      final stop = _editingStops.removeAt(oldIndex);
+      _editingStops.insert(newIndex, stop);
+    });
+  }
+
+  void _removeEditingStop(int index) {
+    setState(() {
+      _editingStops.removeAt(index);
+    });
+  }
+
+  Future<void> _rebuildEditedRoute() async {
+    if (_startingPoint == null ||
+        _destination == null ||
+        _planning) {
+      return;
+    }
+
+    setState(() {
+      _planning = true;
+    });
+
+    try {
+      const routeProvider =
+          GoogleRoutesProvider();
+
+      final waypoints = _editingStops
+          .map(
+            (stop) => DetourEndpoint(
+              name: stop.name,
+              address: stop.address,
+              latitude: stop.latitude,
+              longitude: stop.longitude,
+            ),
+          )
+          .toList();
+
+      final route =
+          await routeProvider.calculateRoute(
+        start: _startingPoint!,
+        destination: _destination!,
+        waypoints: waypoints,
+        optimizeWaypointOrder: false,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _route = route;
+        _optimizedStops =
+            List<DetourVenue>.from(
+          _editingStops,
+        );
+        _editingRoute = false;
+        _editingStops = [];
+      });
+
+      debugPrint(
+        'DETOUR MANUAL ROUTE REBUILT: '
+        '${_optimizedStops.length} stops',
+      );
+    } on GoogleRoutesException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage(error.message);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      debugPrint(
+        'DETOUR MANUAL ROUTE REBUILD FAILED: '
+        '$error',
+      );
+
+      _showMessage(
+        'Could not rebuild the route. '
         'Please try again.',
       );
     } finally {
@@ -1809,22 +1933,59 @@ class _DetourScreenState extends State<DetourScreen> {
       return const SizedBox.shrink();
     }
 
-    final stopCount = _preferences.maximumStops.clamp(1, 5);
+    final stopCount =
+        _preferences.maximumStops.clamp(1, 5);
+
+    if (_editingRoute) {
+      return _buildEditingStops(stopCount);
+    }
+
     final stops = _optimizedStops;
 
     return _buildSectionCard(
       title: 'OPTIMIZED STOPS',
-      trailing: Text(
-        '${stops.length}/$stopCount',
-        style: const TextStyle(
-          color: Colors.white38,
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-        ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '${stops.length}/$stopCount',
+            style: const TextStyle(
+              color: Colors.white38,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(width: 12),
+          TextButton(
+            onPressed:
+                _planning ? null : _startEditingRoute,
+            style: TextButton.styleFrom(
+              foregroundColor:
+                  const Color(0xFFD4AF37),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 6,
+              ),
+              minimumSize: Size.zero,
+              tapTargetSize:
+                  MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text(
+              'EDIT ROUTE',
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 11,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ),
+        ],
       ),
       child: Column(
         children: [
-          for (var index = 0; index < stops.length; index++) ...[
+          for (var index = 0;
+              index < stops.length;
+              index++) ...[
             _buildDetourStopTile(
               stops[index],
               index + 1,
@@ -1840,15 +2001,213 @@ class _DetourScreenState extends State<DetourScreen> {
     );
   }
 
+  Widget _buildEditingStops(int stopCount) {
+    return _buildSectionCard(
+      title: 'EDIT ROUTE',
+      trailing: Text(
+        '${_editingStops.length}/$stopCount',
+        style: const TextStyle(
+          color: Colors.white38,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      child: Column(
+        children: [
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics:
+                const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
+            itemCount: _editingStops.length,
+            onReorderItem: _reorderEditingStops,
+            itemBuilder: (context, index) {
+              final stop = _editingStops[index];
+
+              return _buildEditableStopTile(
+                stop,
+                index,
+                key: ValueKey(
+                  'detour-edit-${stop.placeId}',
+                ),
+              );
+            },
+          ),
+          const Divider(
+            color: Colors.white10,
+            height: 1,
+          ),
+          const SizedBox(height: 12),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Drag stops to choose your own order.',
+              style: TextStyle(
+                color: Colors.white38,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed:
+                      _planning
+                          ? null
+                          : _cancelEditingRoute,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white70,
+                    side: const BorderSide(
+                      color: Colors.white24,
+                    ),
+                    padding:
+                        const EdgeInsets.symmetric(
+                      vertical: 14,
+                    ),
+                  ),
+                  child: const Text(
+                    'CANCEL',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                flex: 2,
+                child: FilledButton(
+                  onPressed:
+                      _planning
+                          ? null
+                          : _rebuildEditedRoute,
+                  style: FilledButton.styleFrom(
+                    backgroundColor:
+                        const Color(0xFFD4AF37),
+                    foregroundColor:
+                        const Color(0xFF0D0D0F),
+                    padding:
+                        const EdgeInsets.symmetric(
+                      vertical: 14,
+                    ),
+                  ),
+                  child: _planning
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child:
+                              CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color:
+                                Color(0xFF0D0D0F),
+                          ),
+                        )
+                      : const Text(
+                          'REBUILD ROUTE',
+                          style: TextStyle(
+                            fontWeight:
+                                FontWeight.w900,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEditableStopTile(
+    DetourVenue candidate,
+    int index, {
+    required Key key,
+  }) {
+    final rating = candidate.diningUnhingedRating;
+
+    final ratingText = rating?.toStringAsFixed(1);
+
+    return ListTile(
+      key: key,
+      contentPadding:
+          const EdgeInsets.symmetric(
+        horizontal: 4,
+        vertical: 6,
+      ),
+      leading: ReorderableDragStartListener(
+        index: index,
+        child: const Icon(
+          Icons.drag_handle,
+          color: Colors.white38,
+        ),
+      ),
+      title: Row(
+        children: [
+          CircleAvatar(
+            radius: 15,
+            backgroundColor:
+                const Color(0xFF0D0D0F),
+            child: Text(
+              '${index + 1}',
+              style: const TextStyle(
+                color: Color(0xFFD4AF37),
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              candidate.name,
+              maxLines: 1,
+              overflow:
+                  TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+      subtitle: ratingText == null
+          ? null
+          : Padding(
+              padding:
+                  const EdgeInsets.only(left: 42),
+              child: Text(
+                'Dining Unhinged rating: '
+                '$ratingText',
+                style: const TextStyle(
+                  color: Colors.white54,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+      trailing: IconButton(
+        tooltip: 'Remove stop',
+        onPressed: _planning
+            ? null
+            : () => _removeEditingStop(index),
+        icon: const Icon(
+          Icons.close,
+          color: Colors.white54,
+        ),
+      ),
+    );
+  }
+
   Widget _buildDetourStopTile(
     DetourVenue candidate,
     int stopNumber,
   ) {
     final rating = candidate.diningUnhingedRating;
 
-    final ratingText = rating == null
-        ? null
-        : rating.toStringAsFixed(1);
+    final ratingText = rating?.toStringAsFixed(1);
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(
@@ -2043,8 +2402,7 @@ class _DetourScreenState extends State<DetourScreen> {
                   ),
                 ),
               ),
-              if (trailing != null)
-                trailing,
+              ?trailing,
             ],
           ),
           const SizedBox(height: 12),

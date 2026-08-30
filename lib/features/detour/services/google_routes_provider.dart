@@ -33,6 +33,7 @@ class GoogleRoutesProvider implements RoutingProvider {
     required DetourEndpoint start,
     required DetourEndpoint destination,
     List<DetourEndpoint> waypoints = const [],
+    bool optimizeWaypointOrder = true,
   }) async {
     if (_apiKey.trim().isEmpty) {
       throw const GoogleRoutesException(
@@ -110,10 +111,12 @@ class GoogleRoutesProvider implements RoutingProvider {
       ).toList();
 
       /*
-       * Ask Google to determine the most efficient order
-       * of the supplied intermediate stops.
+       * Google optimizes the waypoint order for normal
+       * Detour planning. Manual route editing can disable
+       * this so the user's chosen order is preserved.
        */
-      requestBody['optimizeWaypointOrder'] = true;
+      requestBody['optimizeWaypointOrder'] =
+          optimizeWaypointOrder;
     }
 
     final httpClient =
@@ -223,7 +226,8 @@ class GoogleRoutesProvider implements RoutingProvider {
       return _parseRoute(
         firstRoute,
         optimizeWaypoints:
-            waypoints.isNotEmpty,
+            waypoints.isNotEmpty &&
+            optimizeWaypointOrder,
       );
     } on GoogleRoutesException {
       rethrow;
