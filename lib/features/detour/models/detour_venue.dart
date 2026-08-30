@@ -11,6 +11,7 @@ class DetourVenue {
     this.diningUnhingedRating,
     this.diningUnhingedReviewId,
     this.diningUnhingedSlug,
+    this.isUserSelected = false,
   });
 
   /// Google Places identifier.
@@ -38,18 +39,17 @@ class DetourVenue {
   final bool? isOpenNow;
 
   /// Dining Unhinged overall rating.
-  ///
-  /// This is sourced from the Dining Unhinged / Sanity system.
-  /// It is intentionally separate from Google Places data.
   final double? diningUnhingedRating;
 
-  /// Sanity restaurantReview document ID, when the venue
-  /// has a matching Dining Unhinged review.
+  /// Sanity restaurantReview document ID.
   final String? diningUnhingedReviewId;
 
-  /// Dining Unhinged review slug, when the venue
-  /// has a matching review.
+  /// Dining Unhinged review slug.
   final String? diningUnhingedSlug;
+
+  /// Whether this venue was deliberately added
+  /// by the user to the planned route.
+  final bool isUserSelected;
 
   /// Whether this venue has a valid Google Places identity
   /// and geographic location.
@@ -68,6 +68,46 @@ class DetourVenue {
 
   bool hasType(String type) {
     return types.contains(type) || primaryType == type;
+  }
+
+  DetourVenue copyWith({
+    String? placeId,
+    String? name,
+    String? address,
+    double? latitude,
+    double? longitude,
+    String? primaryType,
+    List<String>? types,
+    bool? isOpenNow,
+    double? diningUnhingedRating,
+    String? diningUnhingedReviewId,
+    String? diningUnhingedSlug,
+    bool? isUserSelected,
+  }) {
+    return DetourVenue(
+      placeId: placeId ?? this.placeId,
+      name: name ?? this.name,
+      address: address ?? this.address,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      primaryType:
+          primaryType ?? this.primaryType,
+      types: types ?? this.types,
+      isOpenNow:
+          isOpenNow ?? this.isOpenNow,
+      diningUnhingedRating:
+          diningUnhingedRating ??
+              this.diningUnhingedRating,
+      diningUnhingedReviewId:
+          diningUnhingedReviewId ??
+              this.diningUnhingedReviewId,
+      diningUnhingedSlug:
+          diningUnhingedSlug ??
+              this.diningUnhingedSlug,
+      isUserSelected:
+          isUserSelected ??
+              this.isUserSelected,
+    );
   }
 
   /// Returns a copy of this venue with Dining Unhinged
@@ -89,6 +129,7 @@ class DetourVenue {
       diningUnhingedRating: rating,
       diningUnhingedReviewId: reviewId,
       diningUnhingedSlug: slug,
+      isUserSelected: isUserSelected,
     );
   }
 }
