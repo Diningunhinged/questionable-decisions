@@ -3,6 +3,7 @@ class DetourRoute {
     required this.distanceMeters,
     required this.durationSeconds,
     required this.geometry,
+    this.optimizedWaypointIndices = const [],
   });
 
   /// Total driving distance for the calculated route.
@@ -15,16 +16,33 @@ class DetourRoute {
   ///
   /// Each point is represented as:
   /// [latitude, longitude]
-  ///
-  /// The geometry is intentionally kept provider-neutral so the
-  /// routing provider can change later without affecting Detour.
   final List<List<double>> geometry;
+
+  /// Zero-based indexes representing Google's optimized
+  /// order of the intermediate waypoints.
+  ///
+  /// For example:
+  ///
+  /// Input:
+  /// [A, B, C]
+  ///
+  /// Google result:
+  /// [2, 0, 1]
+  ///
+  /// means:
+  /// C → A → B
+  ///
+  /// Empty when no waypoint optimization was requested.
+  final List<int> optimizedWaypointIndices;
 
   double get distanceKilometers =>
       distanceMeters / 1000;
 
   double get durationMinutes =>
       durationSeconds / 60;
+
+  bool get hasOptimizedWaypointOrder =>
+      optimizedWaypointIndices.isNotEmpty;
 
   bool get isValid {
     if (distanceMeters < 0 ||
@@ -49,6 +67,19 @@ class DetourRoute {
       }
     }
 
+    if (optimizedWaypointIndices.isNotEmpty) {
+      final sortedIndices =
+          [...optimizedWaypointIndices]..sort();
+
+      for (var index = 0;
+          index < sortedIndices.length;
+          index++) {
+        if (sortedIndices[index] != index) {
+          return false;
+        }
+      }
+    }
+
     return true;
   }
 
@@ -56,6 +87,7 @@ class DetourRoute {
     double? distanceMeters,
     double? durationSeconds,
     List<List<double>>? geometry,
+    List<int>? optimizedWaypointIndices,
   }) {
     return DetourRoute(
       distanceMeters:
@@ -64,6 +96,9 @@ class DetourRoute {
           durationSeconds ?? this.durationSeconds,
       geometry:
           geometry ?? this.geometry,
+      optimizedWaypointIndices:
+          optimizedWaypointIndices ??
+              this.optimizedWaypointIndices,
     );
   }
 }
