@@ -4,8 +4,11 @@ import '../../crawl/models/crawl_location_search_result.dart';
 import '../../crawl/services/crawl_location_search_service.dart';
 import '../../crawl/services/nominatim_location_search_provider.dart';
 import '../models/detour_endpoint.dart';
+import '../models/detour_route.dart';
 import '../models/detour_preferences.dart';
 import '../services/detour_destination_store.dart';
+import '../services/detour_route_service.dart';
+import '../services/google_routes_provider.dart';
 import '../../../services/location_service.dart';
 
 class DetourScreen extends StatefulWidget {
@@ -29,6 +32,9 @@ class _DetourScreenState extends State<DetourScreen> {
   List<CrawlLocationSearchResult> _searchResults = [];
 
   DetourPreferences _preferences = const DetourPreferences();
+
+  DetourRoute? _route;
+  bool _planning = false;
 
   bool _searching = false;
   bool _loadingCurrentLocation = false;
@@ -260,7 +266,7 @@ class _DetourScreenState extends State<DetourScreen> {
     });
   }
 
-  void _planDetour() {
+  Future<void> _planDetour() async {
     if (_startingPoint == null) {
       _showMessage(
         'Choose a starting location first.',
@@ -283,9 +289,60 @@ class _DetourScreenState extends State<DetourScreen> {
       return;
     }
 
-    _showMessage(
-      'Detour setup complete. Route calculation is coming next.',
-    );
+    if (_planning) {
+      return;
+    }
+
+    setState(() {
+      _planning = true;
+      _route = null;
+    });
+
+    try {
+      const provider = GoogleRoutesProvider();
+      const routeService = DetourRouteService(
+        provider: provider,
+      );
+
+      final route = await routeService.calculateRoute(
+        start: _startingPoint!,
+        destination: _destination!,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _route = route;
+      });
+    } on DetourRouteException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage(error.message);
+    } on GoogleRoutesException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage(error.message);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage(
+        'Could not calculate the route. Please try again.',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _planning = false;
+        });
+      }
+    }
   }
 
   void _showMessage(String message) {
@@ -332,6 +389,10 @@ class _DetourScreenState extends State<DetourScreen> {
             _buildDestinationLists(),
             const SizedBox(height: 18),
             _buildPreferencesCard(),
+            if (_route != null) ...[
+              const SizedBox(height: 18),
+              _buildRouteResult(),
+            ],
             const SizedBox(height: 22),
             _buildPlanButton(),
           ],
@@ -1238,12 +1299,102 @@ class _DetourScreenState extends State<DetourScreen> {
     );
   }
 
+  Widget _buildRouteResult() {
+    final route = _route;
+
+    if (route == null) {
+      return const SizedBox.shrink();
+    }
+
+    return _buildSectionCard(
+      title: 'ROUTE CALCULATED',
+      child: Row(
+        children: [
+          Expanded(
+            child: _routeSummaryItem(
+              Icons.route,
+              _formatDistance(route.distanceKilometers),
+              'DRIVING DISTANCE',
+            ),
+          ),
+          Expanded(
+            child: _routeSummaryItem(
+              Icons.schedule_outlined,
+              _formatDuration(route.durationMinutes),
+              'EST. DRIVE TIME',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _routeSummaryItem(
+    IconData icon,
+    String value,
+    String label,
+  ) {
+    return Column(
+      children: [
+        Icon(
+          icon,
+          color: const Color(0xFFD4AF37),
+          size: 22,
+        ),
+        const SizedBox(height: 6),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white38,
+            fontSize: 9,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.8,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _formatDistance(double kilometers) {
+    if (kilometers < 10) {
+      return '${kilometers.toStringAsFixed(1)} km';
+    }
+
+    return '${kilometers.toStringAsFixed(0)} km';
+  }
+
+  String _formatDuration(double minutes) {
+    final totalMinutes = minutes.round();
+    final hours = totalMinutes ~/ 60;
+    final remainingMinutes = totalMinutes % 60;
+
+    if (hours == 0) {
+      return '$remainingMinutes min';
+    }
+
+    if (remainingMinutes == 0) {
+      return '$hours hr';
+    }
+
+    return '$hours hr $remainingMinutes min';
+  }
+
   Widget _buildPlanButton() {
     return SizedBox(
       height: 56,
       width: double.infinity,
       child: FilledButton.icon(
-        onPressed: _planDetour,
+        onPressed: _planning ? null : _planDetour,
         style: FilledButton.styleFrom(
           backgroundColor:
               const Color(0xFFD4AF37),
@@ -1253,12 +1404,23 @@ class _DetourScreenState extends State<DetourScreen> {
             borderRadius: BorderRadius.circular(14),
           ),
         ),
-        icon: const Icon(
-          Icons.alt_route,
-        ),
-        label: const Text(
-          'PLAN MY DETOUR',
-          style: TextStyle(
+        icon: _planning
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Color(0xFF0D0D0F),
+                ),
+              )
+            : const Icon(
+                Icons.alt_route,
+              ),
+        label: Text(
+          _planning
+              ? 'CALCULATING ROUTE...'
+              : 'PLAN MY DETOUR',
+          style: const TextStyle(
             fontWeight: FontWeight.w900,
             letterSpacing: 0.8,
           ),
