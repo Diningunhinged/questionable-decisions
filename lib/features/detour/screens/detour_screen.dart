@@ -585,7 +585,7 @@ class _DetourScreenState extends State<DetourScreen> {
         ).fetchReviews();
       } catch (error) {
         debugPrint(
-          'DETOUR REVIEWED BY DINING UNHINGED FAILED: $error',
+          'DETOUR KNOWN REVIEWED VENUES FAILED: $error',
         );
       }
 
@@ -731,7 +731,7 @@ class _DetourScreenState extends State<DetourScreen> {
                                     bottom: 8,
                                   ),
                                   child: Text(
-                                    'REVIEWED BY DINING UNHINGED',
+                                    'KNOWN REVIEWED VENUES',
                                     style: TextStyle(
                                       color: Color(0xFFD4AF37),
                                       fontSize: 11,
@@ -2929,5 +2929,3 @@ class _DetourScreenState extends State<DetourScreen> {
     );
   }
 }
-
-
