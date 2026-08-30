@@ -5,5 +5,6 @@ abstract class RoutingProvider {
   Future<DetourRoute> calculateRoute({
     required DetourEndpoint start,
     required DetourEndpoint destination,
+    List<DetourEndpoint> waypoints = const [],
   });
 }

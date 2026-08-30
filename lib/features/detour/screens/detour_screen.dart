@@ -6,10 +6,12 @@ import '../../crawl/services/crawl_location_search_service.dart';
 import '../../crawl/services/nominatim_location_search_provider.dart';
 import '../models/detour_endpoint.dart';
 import '../models/detour_route.dart';
+import '../models/detour_venue.dart';
 import '../models/detour_preferences.dart';
 import '../services/detour_destination_store.dart';
 import '../services/detour_candidate_service.dart';
 import '../services/detour_route_service.dart';
+import '../services/detour_route_optimizer.dart';
 import '../services/dining_unhinged_review_service.dart';
 import '../services/google_places_provider.dart';
 import '../services/google_routes_provider.dart';
@@ -37,7 +39,7 @@ class _DetourScreenState extends State<DetourScreen> {
 
   // Candidates returned by the detour search. The service returns the
   // eligible venues; the screen keeps them so they can be shown as stops.
-  List<dynamic> _detourCandidates = [];
+  List<DetourVenue> _optimizedStops = [];
 
   DetourPreferences _preferences =
       const DetourPreferences();
@@ -326,7 +328,7 @@ class _DetourScreenState extends State<DetourScreen> {
     setState(() {
       _planning = true;
       _route = null;
-      _detourCandidates = [];
+      _optimizedStops = [];
     });
 
     try {
@@ -378,8 +380,44 @@ class _DetourScreenState extends State<DetourScreen> {
       }
 
       setState(() {
-        _detourCandidates = candidates;
       });
+
+      final optimizer = DetourRouteOptimizer(
+        routingProvider: routeProvider,
+      );
+
+      final optimization =
+          await optimizer.optimize(
+        start: _startingPoint!,
+        destination: _destination!,
+        candidates: candidates,
+        maximumStops: _preferences.maximumStops,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _route = optimization.route;
+        _optimizedStops = optimization.stops;
+      });
+
+      debugPrint(
+        'DETOUR OPTIMIZED STOPS: '
+        '${optimization.stops.length}',
+      );
+
+      for (var index = 0;
+          index < optimization.stops.length;
+          index++) {
+        final stop = optimization.stops[index];
+        debugPrint(
+          'DETOUR STOP ${index + 1}: '
+          '${stop.name} | '
+          'DU rating: ${stop.diningUnhingedRating}',
+        );
+      }
 
       for (final candidate
           in candidates) {
@@ -505,7 +543,7 @@ class _DetourScreenState extends State<DetourScreen> {
             if (_route != null) ...[
               const SizedBox(height: 18),
               _buildRouteResult(),
-              if (_detourCandidates.isNotEmpty) ...[
+              if (_optimizedStops.isNotEmpty) ...[
                 const SizedBox(height: 18),
                 _buildDetourStops(),
               ],
@@ -1225,26 +1263,6 @@ class _DetourScreenState extends State<DetourScreen> {
               value: 5,
               child: Text('5 stops'),
             ),
-            DropdownMenuItem(
-              value: 6,
-              child: Text('6 stops'),
-            ),
-            DropdownMenuItem(
-              value: 7,
-              child: Text('7 stops'),
-            ),
-            DropdownMenuItem(
-              value: 8,
-              child: Text('8 stops'),
-            ),
-            DropdownMenuItem(
-              value: 9,
-              child: Text('9 stops'),
-            ),
-            DropdownMenuItem(
-              value: 10,
-              child: Text('10 stops'),
-            ),
           ],
           onChanged: (value) {
             if (value == null) {
@@ -1563,15 +1581,15 @@ class _DetourScreenState extends State<DetourScreen> {
   }
 
   Widget _buildDetourStops() {
-    if (_detourCandidates.isEmpty) {
+    if (_optimizedStops.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    final stopCount = _preferences.maximumStops;
-    final stops = _detourCandidates.take(stopCount).toList();
+    final stopCount = _preferences.maximumStops.clamp(1, 5);
+    final stops = _optimizedStops;
 
     return _buildSectionCard(
-      title: 'RECOMMENDED STOPS',
+      title: 'OPTIMIZED STOPS',
       trailing: Text(
         '${stops.length}/$stopCount',
         style: const TextStyle(
@@ -1599,16 +1617,14 @@ class _DetourScreenState extends State<DetourScreen> {
   }
 
   Widget _buildDetourStopTile(
-    dynamic candidate,
+    DetourVenue candidate,
     int stopNumber,
   ) {
-    final name = candidate.name?.toString() ?? 'Unnamed venue';
     final rating = candidate.diningUnhingedRating;
 
-    String? ratingText;
-    if (rating is num) {
-      ratingText = rating.toStringAsFixed(1);
-    }
+    final ratingText = rating == null
+        ? null
+        : rating.toStringAsFixed(1);
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(
@@ -1626,7 +1642,7 @@ class _DetourScreenState extends State<DetourScreen> {
         ),
       ),
       title: Text(
-        name,
+        candidate.name,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(

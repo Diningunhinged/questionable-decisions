@@ -8,7 +8,7 @@ class DetourPreferences {
     this.maximumDetourKm = 10,
     this.preferredCategories = const {},
     this.minimumRating = 0,
-    this.maximumStops = 3,
+    this.maximumStops = 5,
     this.allowOvernightStops = false,
     this.avoidVisitedOrSaved = false,
     this.openNowOnly = false,
@@ -108,8 +108,7 @@ class DetourPreferences {
                   ?.toDouble() ??
               0,
       maximumStops:
-          (json['maximumStops'] as num?)?.toInt() ??
-              3,
+    (json['maximumStops'] as num?)?.toInt() ?? 5,
       allowOvernightStops:
           json['allowOvernightStops'] as bool? ??
               false,

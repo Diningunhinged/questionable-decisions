@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/detour_endpoint.dart';
@@ -23,7 +22,8 @@ class GoogleRoutesProvider implements RoutingProvider {
   static const String _fieldMask =
       'routes.duration,'
       'routes.distanceMeters,'
-      'routes.polyline.encodedPolyline';
+      'routes.polyline.encodedPolyline,'
+      'routes.optimizedIntermediateWaypointIndex';
 
   final String _apiKey;
   final http.Client? _client;
@@ -32,6 +32,7 @@ class GoogleRoutesProvider implements RoutingProvider {
   Future<DetourRoute> calculateRoute({
     required DetourEndpoint start,
     required DetourEndpoint destination,
+    List<DetourEndpoint> waypoints = const [],
   }) async {
     if (_apiKey.trim().isEmpty) {
       throw const GoogleRoutesException(
@@ -39,9 +40,29 @@ class GoogleRoutesProvider implements RoutingProvider {
       );
     }
 
+    if (!start.isValid) {
+      throw const GoogleRoutesException(
+        'The starting location is invalid.',
+      );
+    }
+
+    if (!destination.isValid) {
+      throw const GoogleRoutesException(
+        'The destination is invalid.',
+      );
+    }
+
+    for (final waypoint in waypoints) {
+      if (!waypoint.isValid) {
+        throw const GoogleRoutesException(
+          'One of the route stops is invalid.',
+        );
+      }
+    }
+
     final uri = Uri.parse(_baseUrl);
 
-    final requestBody = {
+    final requestBody = <String, dynamic>{
       'origin': {
         'location': {
           'latLng': {
@@ -62,40 +83,43 @@ class GoogleRoutesProvider implements RoutingProvider {
       'routingPreference': 'TRAFFIC_AWARE',
       'polylineQuality': 'OVERVIEW',
       'computeAlternativeRoutes': false,
-      'routeModifiers': {
-        'avoidTolls': false,
-        'avoidHighways': false,
-        'avoidFerries': false,
-      },
       'languageCode': 'en-US',
       'units': 'METRIC',
     };
 
-    final httpClient = _client ?? http.Client();
+    /*
+     * Intermediate waypoints are stopovers by default.
+     *
+     * When multiple stops are supplied, Google can optimize
+     * their order based primarily on travel time while also
+     * considering distance and turns.
+     */
+    if (waypoints.isNotEmpty) {
+      requestBody['intermediates'] =
+          waypoints.map(
+        (waypoint) {
+          return {
+            'location': {
+              'latLng': {
+                'latitude': waypoint.latitude,
+                'longitude': waypoint.longitude,
+              },
+            },
+          };
+        },
+      ).toList();
+
+      /*
+       * Ask Google to determine the most efficient order
+       * of the supplied intermediate stops.
+       */
+      requestBody['optimizeWaypointOrder'] = true;
+    }
+
+    final httpClient =
+        _client ?? http.Client();
 
     try {
-      debugPrint(
-        'GOOGLE ROUTES: Sending ComputeRoutes request',
-      );
-
-      debugPrint(
-        'GOOGLE ROUTES: origin='
-        '${start.latitude},${start.longitude}',
-      );
-
-      debugPrint(
-        'GOOGLE ROUTES: destination='
-        '${destination.latitude},${destination.longitude}',
-      );
-
-      debugPrint(
-        'GOOGLE ROUTES: travelMode=DRIVE',
-      );
-
-      debugPrint(
-        'GOOGLE ROUTES: routingPreference=TRAFFIC_AWARE',
-      );
-
       final response = await httpClient
           .post(
             uri,
@@ -107,61 +131,52 @@ class GoogleRoutesProvider implements RoutingProvider {
             body: jsonEncode(requestBody),
           )
           .timeout(
-            const Duration(seconds: 20),
+            const Duration(seconds: 30),
           );
-
-      debugPrint(
-        'GOOGLE ROUTES STATUS: ${response.statusCode}',
-      );
-
-      debugPrint(
-        'GOOGLE ROUTES BODY: ${response.body}',
-      );
 
       if (response.statusCode != 200) {
         String details = '';
 
         try {
-          final errorBody = jsonDecode(response.body);
+          final errorBody =
+              jsonDecode(response.body);
 
-          if (errorBody is Map<String, dynamic>) {
-            final error = errorBody['error'];
+          if (errorBody
+              is Map<String, dynamic>) {
+            final error =
+                errorBody['error'];
 
-            if (error is Map<String, dynamic>) {
-              final code = error['code'];
-              final status = error['status'];
-              final message = error['message'];
+            if (error
+                is Map<String, dynamic>) {
+              final status =
+                  error['status']?.toString();
 
-              final parts = <String>[];
+              final message =
+                  error['message']?.toString();
 
-              if (code != null) {
-                parts.add(
-                  'code=${code.toString()}',
-                );
-              }
+              final parts =
+                  <String>[];
 
               if (status != null &&
-                  status.toString().trim().isNotEmpty) {
-                parts.add(
-                  'status=${status.toString()}',
-                );
+                  status.isNotEmpty) {
+                parts.add(status);
               }
 
               if (message != null &&
-                  message.toString().trim().isNotEmpty) {
-                parts.add(
-                  'message=${message.toString()}',
-                );
+                  message.isNotEmpty) {
+                parts.add(message);
               }
 
               if (parts.isNotEmpty) {
                 details =
-                    ' ${parts.join(' | ')}';
+                    ' ${parts.join(': ')}';
               }
             }
           }
         } catch (_) {
-          if (response.body.trim().isNotEmpty) {
+          if (response.body
+              .trim()
+              .isNotEmpty) {
             details =
                 ' ${response.body.trim()}';
           }
@@ -173,15 +188,19 @@ class GoogleRoutesProvider implements RoutingProvider {
         );
       }
 
-      final decoded = jsonDecode(response.body);
+      final decoded =
+          jsonDecode(response.body);
 
-      if (decoded is! Map<String, dynamic>) {
+      if (decoded
+          is! Map<String, dynamic>) {
         throw const GoogleRoutesException(
-          'Google Routes API returned an unexpected response.',
+          'Google Routes API returned an '
+          'unexpected response.',
         );
       }
 
-      final routes = decoded['routes'];
+      final routes =
+          decoded['routes'];
 
       if (routes is! List ||
           routes.isEmpty) {
@@ -190,15 +209,22 @@ class GoogleRoutesProvider implements RoutingProvider {
         );
       }
 
-      final firstRoute = routes.first;
+      final firstRoute =
+          routes.first;
 
-      if (firstRoute is! Map<String, dynamic>) {
+      if (firstRoute
+          is! Map<String, dynamic>) {
         throw const GoogleRoutesException(
-          'Google Routes API returned an invalid route.',
+          'Google Routes API returned an '
+          'invalid route.',
         );
       }
 
-      return _parseRoute(firstRoute);
+      return _parseRoute(
+        firstRoute,
+        optimizeWaypoints:
+            waypoints.isNotEmpty,
+      );
     } on GoogleRoutesException {
       rethrow;
     } on FormatException {
@@ -206,10 +232,6 @@ class GoogleRoutesProvider implements RoutingProvider {
         'Google Routes API returned invalid JSON.',
       );
     } catch (error) {
-      debugPrint(
-        'GOOGLE ROUTES EXCEPTION: $error',
-      );
-
       throw GoogleRoutesException(
         'Could not calculate route: $error',
       );
@@ -221,10 +243,14 @@ class GoogleRoutesProvider implements RoutingProvider {
   }
 
   DetourRoute _parseRoute(
-    Map<String, dynamic> route,
-  ) {
-    final rawDistance = route['distanceMeters'];
-    final rawDuration = route['duration'];
+    Map<String, dynamic> route, {
+    required bool optimizeWaypoints,
+  }) {
+    final rawDistance =
+        route['distanceMeters'];
+
+    final rawDuration =
+        route['duration'];
 
     if (rawDistance is! num) {
       throw const GoogleRoutesException(
@@ -233,11 +259,15 @@ class GoogleRoutesProvider implements RoutingProvider {
     }
 
     final durationSeconds =
-        _parseDurationSeconds(rawDuration);
+        _parseDurationSeconds(
+      rawDuration,
+    );
 
-    final polyline = route['polyline'];
+    final polyline =
+        route['polyline'];
 
-    if (polyline is! Map<String, dynamic>) {
+    if (polyline
+        is! Map<String, dynamic>) {
       throw const GoogleRoutesException(
         'Google route is missing polyline data.',
       );
@@ -253,23 +283,85 @@ class GoogleRoutesProvider implements RoutingProvider {
       );
     }
 
-    final geometry = _decodePolyline(
+    final geometry =
+        _decodePolyline(
       encodedPolyline,
     );
 
+    final optimizedIndices =
+        _parseOptimizedWaypointIndices(
+      route,
+      optimizeWaypoints:
+          optimizeWaypoints,
+    );
+
     final result = DetourRoute(
-      distanceMeters: rawDistance.toDouble(),
-      durationSeconds: durationSeconds,
+      distanceMeters:
+          rawDistance.toDouble(),
+      durationSeconds:
+          durationSeconds,
       geometry: geometry,
+      optimizedWaypointIndices:
+          optimizedIndices,
     );
 
     if (!result.isValid) {
       throw const GoogleRoutesException(
-        'Google route contained invalid geometry.',
+        'Google route contained invalid data.',
       );
     }
 
     return result;
+  }
+
+  List<int> _parseOptimizedWaypointIndices(
+    Map<String, dynamic> route, {
+    required bool optimizeWaypoints,
+  }) {
+    if (!optimizeWaypoints) {
+      return const [];
+    }
+
+    final raw =
+        route[
+            'optimizedIntermediateWaypointIndex'];
+
+    if (raw is! List) {
+      throw const GoogleRoutesException(
+        'Google route is missing the '
+        'optimized waypoint order.',
+      );
+    }
+
+    final indices =
+        raw.whereType<num>()
+            .map(
+              (value) => value.toInt(),
+            )
+            .toList();
+
+    if (indices.isEmpty) {
+      throw const GoogleRoutesException(
+        'Google route returned an empty '
+        'optimized waypoint order.',
+      );
+    }
+
+    final sortedIndices =
+        [...indices]..sort();
+
+    for (var index = 0;
+        index < sortedIndices.length;
+        index++) {
+      if (sortedIndices[index] != index) {
+        throw const GoogleRoutesException(
+          'Google route returned an invalid '
+          'optimized waypoint order.',
+        );
+      }
+    }
+
+    return indices;
   }
 
   double _parseDurationSeconds(
@@ -293,17 +385,20 @@ class GoogleRoutesProvider implements RoutingProvider {
 
     if (match == null) {
       throw const GoogleRoutesException(
-        'Google route returned an invalid duration.',
+        'Google route returned an '
+        'invalid duration.',
       );
     }
 
-    final seconds = double.tryParse(
+    final seconds =
+        double.tryParse(
       match.group(1)!,
     );
 
     if (seconds == null) {
       throw const GoogleRoutesException(
-        'Google route returned an invalid duration.',
+        'Google route returned an '
+        'invalid duration.',
       );
     }
 
@@ -313,7 +408,8 @@ class GoogleRoutesProvider implements RoutingProvider {
   List<List<double>> _decodePolyline(
     String encoded,
   ) {
-    final points = <List<double>>[];
+    final points =
+        <List<double>>[];
 
     var index = 0;
     var latitude = 0;
@@ -326,8 +422,11 @@ class GoogleRoutesProvider implements RoutingProvider {
         index,
       );
 
-      index = latitudeResult.nextIndex;
-      latitude += latitudeResult.value;
+      index =
+          latitudeResult.nextIndex;
+
+      latitude +=
+          latitudeResult.value;
 
       if (index >= encoded.length) {
         throw const GoogleRoutesException(
@@ -341,8 +440,11 @@ class GoogleRoutesProvider implements RoutingProvider {
         index,
       );
 
-      index = longitudeResult.nextIndex;
-      longitude += longitudeResult.value;
+      index =
+          longitudeResult.nextIndex;
+
+      longitude +=
+          longitudeResult.value;
 
       points.add([
         latitude / 100000.0,
@@ -375,11 +477,14 @@ class GoogleRoutesProvider implements RoutingProvider {
       }
 
       final byte =
-          encoded.codeUnitAt(index++) - 63;
+          encoded.codeUnitAt(index++) -
+              63;
 
-      if (byte < 0 || byte > 63) {
+      if (byte < 0 ||
+          byte > 63) {
         throw const GoogleRoutesException(
-          'Google route polyline contains invalid data.',
+          'Google route polyline contains '
+          'invalid data.',
         );
       }
 
@@ -394,7 +499,8 @@ class GoogleRoutesProvider implements RoutingProvider {
 
       if (shift > 30) {
         throw const GoogleRoutesException(
-          'Google route polyline value is too large.',
+          'Google route polyline value is '
+          'too large.',
         );
       }
     }
