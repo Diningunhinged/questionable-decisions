@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
@@ -1702,9 +1704,19 @@ class _DetourScreenState extends State<DetourScreen> {
           },
           markers: markers,
           polylines: {polyline},
+          gestureRecognizers:
+              <Factory<OneSequenceGestureRecognizer>>{
+            Factory<OneSequenceGestureRecognizer>(
+              () => EagerGestureRecognizer(),
+            ),
+          },
           myLocationButtonEnabled: true,
           myLocationEnabled: true,
           zoomControlsEnabled: false,
+          zoomGesturesEnabled: true,
+          scrollGesturesEnabled: true,
+          rotateGesturesEnabled: true,
+          tiltGesturesEnabled: true,
           mapToolbarEnabled: false,
           compassEnabled: true,
         ),
