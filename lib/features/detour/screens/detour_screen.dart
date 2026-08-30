@@ -11,6 +11,7 @@ import '../models/detour_endpoint.dart';
 import '../models/detour_route.dart';
 import '../models/detour_venue.dart';
 import '../models/detour_preferences.dart';
+import '../models/dining_unhinged_review.dart';
 import '../services/detour_destination_store.dart';
 import '../services/detour_candidate_service.dart';
 import '../services/detour_route_service.dart';
@@ -19,6 +20,19 @@ import '../services/dining_unhinged_review_service.dart';
 import '../services/google_places_provider.dart';
 import '../services/google_routes_provider.dart';
 import '../../../services/location_service.dart';
+
+class _AddStopSelection {
+  const _AddStopSelection.review(this.review)
+      : location = null;
+
+  const _AddStopSelection.location(this.location)
+      : review = null;
+
+  final DiningUnhingedReview? review;
+  final CrawlLocationSearchResult? location;
+
+  bool get isReview => review != null;
+}
 
 class DetourScreen extends StatefulWidget {
   const DetourScreen({super.key});
@@ -542,6 +556,484 @@ class _DetourScreenState extends State<DetourScreen> {
     });
   }
 
+  Future<void> _showAddStopDialog() async {
+    if (_planning) {
+      return;
+    }
+
+    final maximumStops =
+        _preferences.maximumStops.clamp(1, 5);
+
+    if (_editingStops.length >= maximumStops) {
+      _showMessage(
+        'You have reached your maximum of $maximumStops stops.',
+      );
+      return;
+    }
+
+    final controller = TextEditingController();
+    final focusNode = FocusNode();
+    var searching = false;
+    var loadingKnownVenues = true;
+    var searchResults = <CrawlLocationSearchResult>[];
+    var knownReviews = <DiningUnhingedReview>[];
+
+    try {
+      try {
+        knownReviews = await DiningUnhingedReviewService(
+          apiClient: ApiClient(),
+        ).fetchReviews();
+      } catch (error) {
+        debugPrint(
+          'DETOUR REVIEWED BY DINING UNHINGED FAILED: $error',
+        );
+      }
+
+      loadingKnownVenues = false;
+
+      if (!mounted) {
+        return;
+      }
+
+      final selected =
+          await showDialog<_AddStopSelection>(
+        context: context,
+        builder: (dialogContext) {
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              Future<void> search(String value) async {
+                final query = value.trim();
+
+                if (query.isEmpty) {
+                  setDialogState(() {
+                    searchResults = [];
+                    searching = false;
+                  });
+                  return;
+                }
+
+                setDialogState(() {
+                  searching = true;
+                });
+
+                try {
+                  final results =
+                      await _searchService.search(query);
+
+                  if (!dialogContext.mounted) {
+                    return;
+                  }
+
+                  setDialogState(() {
+                    searchResults = results;
+                    searching = false;
+                  });
+                } catch (_) {
+                  if (!dialogContext.mounted) {
+                    return;
+                  }
+
+                  setDialogState(() {
+                    searchResults = [];
+                    searching = false;
+                  });
+                }
+              }
+
+              final filteredKnownReviews = knownReviews.where((review) {
+                final query = controller.text.trim().toLowerCase();
+
+                if (query.isEmpty) {
+                  return true;
+                }
+
+                final name = review.venueName?.toLowerCase() ?? '';
+                final address = review.address?.toLowerCase() ?? '';
+                final city = review.city?.toLowerCase() ?? '';
+
+                return name.contains(query) ||
+                    address.contains(query) ||
+                    city.contains(query);
+              }).toList();
+
+              return AlertDialog(
+                backgroundColor: const Color(0xFF1C1C1E),
+                title: const Text(
+                  'ADD STOP',
+                  style: TextStyle(
+                    color: Color(0xFFD4AF37),
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1,
+                  ),
+                ),
+                content: SizedBox(
+                  width: double.maxFinite,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxHeight: 560,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextField(
+                          controller: controller,
+                          focusNode: focusNode,
+                          autofocus: true,
+                          onChanged: (value) {
+                            setDialogState(() {});
+                            search(value);
+                          },
+                          style: const TextStyle(
+                            color: Colors.white,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: 'Search for a stop',
+                            hintStyle: const TextStyle(
+                              color: Colors.white38,
+                            ),
+                            prefixIcon: const Icon(
+                              Icons.search,
+                              color: Color(0xFFD4AF37),
+                            ),
+                            suffixIcon: searching
+                                ? const Padding(
+                                    padding: EdgeInsets.all(12),
+                                    child: SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child:
+                                          CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Color(0xFFD4AF37),
+                                      ),
+                                    ),
+                                  )
+                                : null,
+                            filled: true,
+                            fillColor: const Color(0xFF0D0D0F),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(
+                                color: Colors.white10,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Expanded(
+                          child: ListView(
+                            shrinkWrap: true,
+                            children: [
+                              if (filteredKnownReviews.isNotEmpty) ...[
+                                const Padding(
+                                  padding: EdgeInsets.only(
+                                    left: 4,
+                                    bottom: 8,
+                                  ),
+                                  child: Text(
+                                    'REVIEWED BY DINING UNHINGED',
+                                    style: TextStyle(
+                                      color: Color(0xFFD4AF37),
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 1.2,
+                                    ),
+                                  ),
+                                ),
+                                for (var index = 0;
+                                    index < filteredKnownReviews.length;
+                                    index++) ...[
+                                  _buildKnownReviewTile(
+                                    filteredKnownReviews[index],
+                                    onTap: () {
+                                      Navigator.of(dialogContext).pop(
+                                        _AddStopSelection.review(
+                                          filteredKnownReviews[index],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                  if (index !=
+                                      filteredKnownReviews.length - 1)
+                                    const Divider(
+                                      color: Colors.white10,
+                                      height: 1,
+                                    ),
+                                ],
+                                const SizedBox(height: 16),
+                              ] else if (loadingKnownVenues) ...[
+                                const Padding(
+                                  padding: EdgeInsets.all(18),
+                                  child: Center(
+                                    child: CircularProgressIndicator(
+                                      color: Color(0xFFD4AF37),
+                                    ),
+                                  ),
+                                ),
+                              ] else if (controller.text.trim().isEmpty) ...[
+                                const Padding(
+                                  padding: EdgeInsets.only(
+                                    left: 4,
+                                    bottom: 16,
+                                  ),
+                                  child: Text(
+                                    'No known reviewed venues loaded.',
+                                    style: TextStyle(
+                                      color: Colors.white38,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              if (searchResults.isNotEmpty) ...[
+                                const Padding(
+                                  padding: EdgeInsets.only(
+                                    left: 4,
+                                    bottom: 8,
+                                  ),
+                                  child: Text(
+                                    'OTHER LOCATIONS',
+                                    style: TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 1.2,
+                                    ),
+                                  ),
+                                ),
+                                for (var index = 0;
+                                    index < searchResults.length;
+                                    index++) ...[
+                                  _buildAddStopSearchTile(
+                                    searchResults[index],
+                                    onTap: () {
+                                      Navigator.of(dialogContext).pop(
+                                        _AddStopSelection.location(
+                                          searchResults[index],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                  if (index != searchResults.length - 1)
+                                    const Divider(
+                                      color: Colors.white10,
+                                      height: 1,
+                                    ),
+                                ],
+                              ] else if (!searching &&
+                                  controller.text.trim().isNotEmpty &&
+                                  filteredKnownReviews.isEmpty) ...[
+                                const Padding(
+                                  padding: EdgeInsets.all(12),
+                                  child: Text(
+                                    'No locations found.',
+                                    style: TextStyle(
+                                      color: Colors.white38,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () =>
+                        Navigator.of(dialogContext).pop(),
+                    child: const Text(
+                      'CANCEL',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+
+      if (selected == null || !mounted) {
+        return;
+      }
+
+      final stop = selected.isReview
+          ? _venueFromDiningUnhingedReview(selected.review!)
+          : _venueFromSearchResult(selected.location!);
+
+      if (_editingStops.any(
+        (existing) =>
+            (stop.placeId.isNotEmpty &&
+                existing.placeId == stop.placeId) ||
+            ((existing.latitude - stop.latitude).abs() < 0.0001 &&
+                (existing.longitude - stop.longitude).abs() < 0.0001),
+      )) {
+        _showMessage('That stop is already on your route.');
+        return;
+      }
+
+      setState(() {
+        _editingStops.add(stop);
+      });
+    } finally {
+      controller.dispose();
+      focusNode.dispose();
+    }
+  }
+
+  Widget _buildKnownReviewTile(
+    DiningUnhingedReview review, {
+    required VoidCallback onTap,
+  }) {
+    final rating = review.rating;
+    final location = [
+      review.city,
+      review.province,
+    ].whereType<String>().where((value) => value.isNotEmpty).join(', ');
+
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 4,
+        vertical: 5,
+      ),
+      leading: const CircleAvatar(
+        backgroundColor: Color(0xFF0D0D0F),
+        child: Icon(
+          Icons.restaurant,
+          color: Color(0xFFD4AF37),
+        ),
+      ),
+      title: Row(
+        children: [
+          Expanded(
+            child: Text(
+              review.venueName ?? review.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          if (rating != null) ...[
+            const SizedBox(width: 8),
+            Text(
+              rating.toStringAsFixed(1),
+              style: const TextStyle(
+                color: Color(0xFFD4AF37),
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const Icon(
+              Icons.star,
+              size: 15,
+              color: Color(0xFFD4AF37),
+            ),
+          ],
+        ],
+      ),
+      subtitle: Text(
+        location.isEmpty
+            ? (review.address ?? 'Dining Unhinged review')
+            : location,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: Colors.white54,
+          fontSize: 12,
+        ),
+      ),
+      trailing: const Icon(
+        Icons.add_circle_outline,
+        color: Color(0xFFD4AF37),
+      ),
+      onTap: onTap,
+    );
+  }
+
+  Widget _buildAddStopSearchTile(
+    CrawlLocationSearchResult result, {
+    required VoidCallback onTap,
+  }) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 4,
+        vertical: 4,
+      ),
+      leading: const Icon(
+        Icons.location_on_outlined,
+        color: Color(0xFFD4AF37),
+      ),
+      title: Text(
+        result.name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      subtitle: result.address == null
+          ? null
+          : Text(
+              result.address!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white54,
+                fontSize: 12,
+              ),
+            ),
+      onTap: onTap,
+    );
+  }
+
+  DetourVenue _venueFromDiningUnhingedReview(
+    DiningUnhingedReview review,
+  ) {
+    final venueId = review.venueId?.trim();
+    final placeId = venueId != null && venueId.isNotEmpty
+        ? venueId
+        : 'du_review_${review.reviewId}';
+
+    return DetourVenue(
+      placeId: placeId,
+      name: review.venueName ?? review.title,
+      address: review.address,
+      latitude: review.latitude,
+      longitude: review.longitude,
+      primaryType: review.venueType,
+      types: const [],
+      isOpenNow: null,
+      diningUnhingedRating: review.rating,
+      diningUnhingedReviewId: review.reviewId,
+      diningUnhingedSlug: review.slug,
+    );
+  }
+
+  DetourVenue _venueFromSearchResult(
+    CrawlLocationSearchResult selected,
+  ) {
+    return DetourVenue(
+      placeId:
+          'manual_${selected.latitude}_${selected.longitude}',
+      name: selected.name,
+      address: selected.address,
+      latitude: selected.latitude,
+      longitude: selected.longitude,
+      primaryType: null,
+      types: const [],
+      isOpenNow: null,
+    );
+  }
+
   Future<void> _rebuildEditedRoute() async {
     if (_startingPoint == null ||
         _destination == null ||
@@ -673,10 +1165,8 @@ class _DetourScreenState extends State<DetourScreen> {
             if (_route != null) ...[
               const SizedBox(height: 18),
               _buildRouteResult(),
-              if (_optimizedStops.isNotEmpty) ...[
-                const SizedBox(height: 18),
-                _buildDetourStops(),
-              ],
+              const SizedBox(height: 18),
+              _buildDetourStops(),
             ],
             const SizedBox(height: 22),
             _buildPlanButton(),
@@ -1929,10 +2419,6 @@ class _DetourScreenState extends State<DetourScreen> {
   }
 
   Widget _buildDetourStops() {
-    if (_optimizedStops.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
     final stopCount =
         _preferences.maximumStops.clamp(1, 5);
 
@@ -2014,25 +2500,56 @@ class _DetourScreenState extends State<DetourScreen> {
       ),
       child: Column(
         children: [
-          ReorderableListView.builder(
-            shrinkWrap: true,
-            physics:
-                const NeverScrollableScrollPhysics(),
-            buildDefaultDragHandles: false,
-            itemCount: _editingStops.length,
-            onReorderItem: _reorderEditingStops,
-            itemBuilder: (context, index) {
-              final stop = _editingStops[index];
+          if (_editingStops.isNotEmpty)
+            ReorderableListView.builder(
+              shrinkWrap: true,
+              physics:
+                  const NeverScrollableScrollPhysics(),
+              buildDefaultDragHandles: false,
+              itemCount: _editingStops.length,
+              onReorderItem: _reorderEditingStops,
+              itemBuilder: (context, index) {
+                final stop = _editingStops[index];
 
-              return _buildEditableStopTile(
-                stop,
-                index,
-                key: ValueKey(
-                  'detour-edit-${stop.placeId}',
+                return _buildEditableStopTile(
+                  stop,
+                  index,
+                  key: ValueKey(
+                    'detour-edit-${stop.placeId}',
+                  ),
+                );
+              },
+            ),
+          if (_editingStops.isNotEmpty)
+            const Divider(
+              color: Colors.white10,
+              height: 1,
+            ),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed:
+                  _planning ||
+                          _editingStops.length >= stopCount
+                      ? null
+                      : _showAddStopDialog,
+              icon: const Icon(Icons.add),
+              label: Text(
+                _editingStops.length >= stopCount
+                    ? 'MAXIMUM STOPS REACHED'
+                    : 'ADD STOP',
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFD4AF37),
+                side: const BorderSide(
+                  color: Color(0xFFD4AF37),
                 ),
-              );
-            },
+                padding:
+                    const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
           ),
+          const SizedBox(height: 12),
           const Divider(
             color: Colors.white10,
             height: 1,
@@ -2412,3 +2929,5 @@ class _DetourScreenState extends State<DetourScreen> {
     );
   }
 }
+
+
