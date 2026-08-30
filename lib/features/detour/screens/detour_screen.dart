@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../crawl/models/crawl_location_search_result.dart';
@@ -41,6 +42,8 @@ class _DetourScreenState extends State<DetourScreen> {
   // eligible venues; the screen keeps them so they can be shown as stops.
   List<DetourVenue> _optimizedStops = [];
 
+  GoogleMapController? _detourMapController;
+
   DetourPreferences _preferences =
       const DetourPreferences();
 
@@ -66,6 +69,7 @@ class _DetourScreenState extends State<DetourScreen> {
 
   @override
   void dispose() {
+    _detourMapController?.dispose();
     _destinationController.dispose();
     _destinationFocusNode.dispose();
     super.dispose();
@@ -1553,31 +1557,239 @@ class _DetourScreenState extends State<DetourScreen> {
       return const SizedBox.shrink();
     }
 
-    return _buildSectionCard(
-      title: 'ROUTE CALCULATED',
-      child: Row(
-        children: [
-          Expanded(
-            child: _routeSummaryItem(
-              Icons.route,
-              _formatDistance(
-                route.distanceKilometers,
+    return Column(
+      children: [
+        _buildSectionCard(
+          title: 'ROUTE CALCULATED',
+          child: Row(
+            children: [
+              Expanded(
+                child: _routeSummaryItem(
+                  Icons.route,
+                  _formatDistance(
+                    route.distanceKilometers,
+                  ),
+                  'DRIVING DISTANCE',
+                ),
               ),
-              'DRIVING DISTANCE',
-            ),
-          ),
-          Expanded(
-            child: _routeSummaryItem(
-              Icons.schedule_outlined,
-              _formatDuration(
-                route.durationMinutes,
+              Expanded(
+                child: _routeSummaryItem(
+                  Icons.schedule_outlined,
+                  _formatDuration(
+                    route.durationMinutes,
+                  ),
+                  'EST. DRIVE TIME',
+                ),
               ),
-              'EST. DRIVE TIME',
-            ),
+            ],
           ),
-        ],
+        ),
+        const SizedBox(height: 18),
+        _buildDetourMap(route),
+      ],
+    );
+  }
+
+  Widget _buildDetourMap(DetourRoute route) {
+    final routePoints = route.geometry
+        .where((point) => point.length == 2)
+        .map(
+          (point) => LatLng(
+            point[0],
+            point[1],
+          ),
+        )
+        .toList();
+
+    if (routePoints.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final markers = <Marker>{};
+
+    final startingPoint = _startingPoint;
+    if (startingPoint != null) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId(
+            'detour_start',
+          ),
+          position: LatLng(
+            startingPoint.latitude,
+            startingPoint.longitude,
+          ),
+          infoWindow: const InfoWindow(
+            title: 'START',
+          ),
+          icon:
+              BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor.hueGreen,
+          ),
+        ),
+      );
+    }
+
+    for (var index = 0;
+        index < _optimizedStops.length;
+        index++) {
+      final stop = _optimizedStops[index];
+
+      markers.add(
+        Marker(
+          markerId: MarkerId(
+            'detour_stop_$index',
+          ),
+          position: LatLng(
+            stop.latitude,
+            stop.longitude,
+          ),
+          infoWindow: InfoWindow(
+            title: 'STOP ${index + 1}',
+            snippet: stop.name,
+          ),
+          icon:
+              BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor.hueYellow,
+          ),
+        ),
+      );
+    }
+
+    final destination = _destination;
+    if (destination != null) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId(
+            'detour_destination',
+          ),
+          position: LatLng(
+            destination.latitude,
+            destination.longitude,
+          ),
+          infoWindow: InfoWindow(
+            title: 'DESTINATION',
+            snippet: destination.name,
+          ),
+          icon:
+              BitmapDescriptor.defaultMarkerWithHue(
+            BitmapDescriptor.hueRed,
+          ),
+        ),
+      );
+    }
+
+    final polyline = Polyline(
+      polylineId: const PolylineId(
+        'detour_optimized_route',
+      ),
+      points: routePoints,
+      width: 6,
+      color: const Color(0xFFD4AF37),
+    );
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        height: 360,
+        child: GoogleMap(
+          initialCameraPosition: CameraPosition(
+            target: routePoints.first,
+            zoom: 12,
+          ),
+          onMapCreated: (controller) {
+            _detourMapController = controller;
+            _fitDetourMap(routePoints);
+          },
+          markers: markers,
+          polylines: {polyline},
+          myLocationButtonEnabled: true,
+          myLocationEnabled: true,
+          zoomControlsEnabled: false,
+          mapToolbarEnabled: false,
+          compassEnabled: true,
+        ),
       ),
     );
+  }
+
+  Future<void> _fitDetourMap(
+    List<LatLng> points,
+  ) async {
+    final controller = _detourMapController;
+
+    if (controller == null || points.isEmpty) {
+      return;
+    }
+
+    var minLat = points.first.latitude;
+    var maxLat = points.first.latitude;
+    var minLng = points.first.longitude;
+    var maxLng = points.first.longitude;
+
+    for (final point in points.skip(1)) {
+      if (point.latitude < minLat) {
+        minLat = point.latitude;
+      }
+
+      if (point.latitude > maxLat) {
+        maxLat = point.latitude;
+      }
+
+      if (point.longitude < minLng) {
+        minLng = point.longitude;
+      }
+
+      if (point.longitude > maxLng) {
+        maxLng = point.longitude;
+      }
+    }
+
+    if ((maxLat - minLat).abs() < 0.001 &&
+        (maxLng - minLng).abs() < 0.001) {
+      await controller.animateCamera(
+        CameraUpdate.newLatLngZoom(
+          points.first,
+          15,
+        ),
+      );
+      return;
+    }
+
+    final bounds = LatLngBounds(
+      southwest: LatLng(
+        minLat,
+        minLng,
+      ),
+      northeast: LatLng(
+        maxLat,
+        maxLng,
+      ),
+    );
+
+    try {
+      await controller.animateCamera(
+        CameraUpdate.newLatLngBounds(
+          bounds,
+          50,
+        ),
+      );
+    } catch (_) {
+      await Future<void>.delayed(
+        const Duration(milliseconds: 250),
+      );
+
+      if (!mounted ||
+          _detourMapController != controller) {
+        return;
+      }
+
+      await controller.animateCamera(
+        CameraUpdate.newLatLngBounds(
+          bounds,
+          50,
+        ),
+      );
+    }
   }
 
   Widget _buildDetourStops() {
