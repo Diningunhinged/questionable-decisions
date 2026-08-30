@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/detour_endpoint.dart';
@@ -61,6 +62,11 @@ class GoogleRoutesProvider implements RoutingProvider {
       'routingPreference': 'TRAFFIC_AWARE',
       'polylineQuality': 'OVERVIEW',
       'computeAlternativeRoutes': false,
+      'routeModifiers': {
+        'avoidTolls': false,
+        'avoidHighways': false,
+        'avoidFerries': false,
+      },
       'languageCode': 'en-US',
       'units': 'METRIC',
     };
@@ -68,6 +74,28 @@ class GoogleRoutesProvider implements RoutingProvider {
     final httpClient = _client ?? http.Client();
 
     try {
+      debugPrint(
+        'GOOGLE ROUTES: Sending ComputeRoutes request',
+      );
+
+      debugPrint(
+        'GOOGLE ROUTES: origin='
+        '${start.latitude},${start.longitude}',
+      );
+
+      debugPrint(
+        'GOOGLE ROUTES: destination='
+        '${destination.latitude},${destination.longitude}',
+      );
+
+      debugPrint(
+        'GOOGLE ROUTES: travelMode=DRIVE',
+      );
+
+      debugPrint(
+        'GOOGLE ROUTES: routingPreference=TRAFFIC_AWARE',
+      );
+
       final response = await httpClient
           .post(
             uri,
@@ -82,10 +110,66 @@ class GoogleRoutesProvider implements RoutingProvider {
             const Duration(seconds: 20),
           );
 
+      debugPrint(
+        'GOOGLE ROUTES STATUS: ${response.statusCode}',
+      );
+
+      debugPrint(
+        'GOOGLE ROUTES BODY: ${response.body}',
+      );
+
       if (response.statusCode != 200) {
+        String details = '';
+
+        try {
+          final errorBody = jsonDecode(response.body);
+
+          if (errorBody is Map<String, dynamic>) {
+            final error = errorBody['error'];
+
+            if (error is Map<String, dynamic>) {
+              final code = error['code'];
+              final status = error['status'];
+              final message = error['message'];
+
+              final parts = <String>[];
+
+              if (code != null) {
+                parts.add(
+                  'code=${code.toString()}',
+                );
+              }
+
+              if (status != null &&
+                  status.toString().trim().isNotEmpty) {
+                parts.add(
+                  'status=${status.toString()}',
+                );
+              }
+
+              if (message != null &&
+                  message.toString().trim().isNotEmpty) {
+                parts.add(
+                  'message=${message.toString()}',
+                );
+              }
+
+              if (parts.isNotEmpty) {
+                details =
+                    ' ${parts.join(' | ')}';
+              }
+            }
+          }
+        } catch (_) {
+          if (response.body.trim().isNotEmpty) {
+            details =
+                ' ${response.body.trim()}';
+          }
+        }
+
         throw GoogleRoutesException(
           'Google Routes API request failed '
-          '(${response.statusCode}).',
+          '(${response.statusCode}).$details',
         );
       }
 
@@ -99,7 +183,8 @@ class GoogleRoutesProvider implements RoutingProvider {
 
       final routes = decoded['routes'];
 
-      if (routes is! List || routes.isEmpty) {
+      if (routes is! List ||
+          routes.isEmpty) {
         throw const GoogleRoutesException(
           'Google Routes API returned no route.',
         );
@@ -121,6 +206,10 @@ class GoogleRoutesProvider implements RoutingProvider {
         'Google Routes API returned invalid JSON.',
       );
     } catch (error) {
+      debugPrint(
+        'GOOGLE ROUTES EXCEPTION: $error',
+      );
+
       throw GoogleRoutesException(
         'Could not calculate route: $error',
       );
@@ -198,7 +287,9 @@ class GoogleRoutesProvider implements RoutingProvider {
 
     final match = RegExp(
       r'^([0-9]+(?:\.[0-9]+)?)s$',
-    ).firstMatch(value.trim());
+    ).firstMatch(
+      value.trim(),
+    );
 
     if (match == null) {
       throw const GoogleRoutesException(
@@ -330,8 +421,11 @@ class _PolylineValue {
   final int nextIndex;
 }
 
-class GoogleRoutesException implements Exception {
-  const GoogleRoutesException(this.message);
+class GoogleRoutesException
+    implements Exception {
+  const GoogleRoutesException(
+    this.message,
+  );
 
   final String message;
 

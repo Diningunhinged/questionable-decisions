@@ -7,6 +7,9 @@ class ApiConfig {
   static const String nearbyEndpoint =
       '/api/nearby.json';
 
+  static const String detourEndpoint =
+      '/api/detour.json';
+
   static const Duration requestTimeout =
       Duration(seconds: 15);
 }
