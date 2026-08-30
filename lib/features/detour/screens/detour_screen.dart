@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/network/api_client.dart';
 import '../../crawl/models/crawl_location_search_result.dart';
 import '../../crawl/services/crawl_location_search_service.dart';
 import '../../crawl/services/nominatim_location_search_provider.dart';
@@ -7,7 +8,10 @@ import '../models/detour_endpoint.dart';
 import '../models/detour_route.dart';
 import '../models/detour_preferences.dart';
 import '../services/detour_destination_store.dart';
+import '../services/detour_candidate_service.dart';
 import '../services/detour_route_service.dart';
+import '../services/dining_unhinged_review_service.dart';
+import '../services/google_places_provider.dart';
 import '../services/google_routes_provider.dart';
 import '../../../services/location_service.dart';
 
@@ -31,7 +35,12 @@ class _DetourScreenState extends State<DetourScreen> {
 
   List<CrawlLocationSearchResult> _searchResults = [];
 
-  DetourPreferences _preferences = const DetourPreferences();
+  // Candidates returned by the detour search. The service returns the
+  // eligible venues; the screen keeps them so they can be shown as stops.
+  List<dynamic> _detourCandidates = [];
+
+  DetourPreferences _preferences =
+      const DetourPreferences();
 
   DetourRoute? _route;
   bool _planning = false;
@@ -46,7 +55,8 @@ class _DetourScreenState extends State<DetourScreen> {
     super.initState();
 
     _searchService = CrawlLocationSearchService(
-      provider: const NominatimLocationSearchProvider(),
+      provider:
+          const NominatimLocationSearchProvider(),
     );
 
     _loadDestinations();
@@ -81,7 +91,8 @@ class _DetourScreenState extends State<DetourScreen> {
     });
 
     try {
-      final position = await LocationService.getCurrentLocation();
+      final position =
+          await LocationService.getCurrentLocation();
 
       if (!mounted) {
         return;
@@ -116,12 +127,14 @@ class _DetourScreenState extends State<DetourScreen> {
   }
 
   void _swapLocations() {
-    if (_startingPoint == null && _destination == null) {
+    if (_startingPoint == null &&
+        _destination == null) {
       return;
     }
 
     setState(() {
-      final oldStartingPoint = _startingPoint;
+      final oldStartingPoint =
+          _startingPoint;
 
       _startingPoint = _destination;
       _destination = oldStartingPoint;
@@ -131,14 +144,18 @@ class _DetourScreenState extends State<DetourScreen> {
     });
   }
 
-  Future<void> _searchDestination(String query) async {
-    final normalizedQuery = query.trim();
+  Future<void> _searchDestination(
+    String query,
+  ) async {
+    final normalizedQuery =
+        query.trim();
 
     if (normalizedQuery.isEmpty) {
       setState(() {
         _searchResults = [];
         _searching = false;
       });
+
       return;
     }
 
@@ -147,7 +164,8 @@ class _DetourScreenState extends State<DetourScreen> {
     });
 
     try {
-      final results = await _searchService.search(
+      final results =
+          await _searchService.search(
         normalizedQuery,
       );
 
@@ -186,7 +204,8 @@ class _DetourScreenState extends State<DetourScreen> {
   Future<void> _selectSearchResult(
     CrawlLocationSearchResult result,
   ) async {
-    final destination = DetourEndpoint(
+    final destination =
+        DetourEndpoint(
       name: result.name,
       address: result.address,
       latitude: result.latitude,
@@ -195,7 +214,8 @@ class _DetourScreenState extends State<DetourScreen> {
 
     setState(() {
       _destination = destination;
-      _destinationController.text = destination.name;
+      _destinationController.text =
+          destination.name;
       _searchResults = [];
     });
 
@@ -217,7 +237,8 @@ class _DetourScreenState extends State<DetourScreen> {
   ) async {
     setState(() {
       _destination = destination;
-      _destinationController.text = destination.name;
+      _destinationController.text =
+          destination.name;
       _searchResults = [];
     });
 
@@ -237,10 +258,16 @@ class _DetourScreenState extends State<DetourScreen> {
   Future<void> _toggleSavedDestination(
     DetourEndpoint destination,
   ) async {
-    if (isSavedDetourDestination(destination)) {
-      await removeDetourDestination(destination);
+    if (isSavedDetourDestination(
+      destination,
+    )) {
+      await removeDetourDestination(
+        destination,
+      );
     } else {
-      await saveDetourDestination(destination);
+      await saveDetourDestination(
+        destination,
+      );
     }
 
     if (!mounted) {
@@ -271,6 +298,7 @@ class _DetourScreenState extends State<DetourScreen> {
       _showMessage(
         'Choose a starting location first.',
       );
+
       return;
     }
 
@@ -278,6 +306,7 @@ class _DetourScreenState extends State<DetourScreen> {
       _showMessage(
         'Choose a destination first.',
       );
+
       return;
     }
 
@@ -286,6 +315,7 @@ class _DetourScreenState extends State<DetourScreen> {
       _showMessage(
         'One of your locations is invalid.',
       );
+
       return;
     }
 
@@ -296,15 +326,20 @@ class _DetourScreenState extends State<DetourScreen> {
     setState(() {
       _planning = true;
       _route = null;
+      _detourCandidates = [];
     });
 
     try {
-      const provider = GoogleRoutesProvider();
-      const routeService = DetourRouteService(
-        provider: provider,
+      const routeProvider =
+          GoogleRoutesProvider();
+
+      const routeService =
+          DetourRouteService(
+        provider: routeProvider,
       );
 
-      final route = await routeService.calculateRoute(
+      final route =
+          await routeService.calculateRoute(
         start: _startingPoint!,
         destination: _destination!,
       );
@@ -316,25 +351,100 @@ class _DetourScreenState extends State<DetourScreen> {
       setState(() {
         _route = route;
       });
-    } on DetourRouteException catch (error) {
+
+      const placesProvider =
+          GooglePlacesProvider();
+
+      final diningUnhingedReviewService =
+          DiningUnhingedReviewService(
+        apiClient: ApiClient(),
+      );
+
+      final candidateService =
+          DetourCandidateService(
+        placesProvider: placesProvider,
+        diningUnhingedReviewService:
+            diningUnhingedReviewService,
+      );
+
+      final candidates =
+          await candidateService.findCandidates(
+        route: route,
+        preferences: _preferences,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _detourCandidates = candidates;
+      });
+
+      for (final candidate
+          in candidates) {
+        final distanceToRoute =
+            candidateService.geometryService
+                .distanceToRouteMeters(
+          geometry: route.geometry,
+          latitude: candidate.latitude,
+          longitude: candidate.longitude,
+        );
+
+        debugPrint(
+          'DETOUR CANDIDATE: '
+          '${candidate.name} | '
+          'PLACE ID: ${candidate.placeId} | '
+          'DU rating: '
+          '${candidate.diningUnhingedRating} | '
+          'lat: ${candidate.latitude} | '
+          'lng: ${candidate.longitude} | '
+          'distanceToRoute: '
+          '${distanceToRoute.toStringAsFixed(0)}m',
+        );
+      }
+
+      debugPrint(
+        'DETOUR CANDIDATES FOUND: '
+        '${candidates.length}',
+      );
+    } on DetourRouteException catch (
+      error
+    ) {
       if (!mounted) {
         return;
       }
 
       _showMessage(error.message);
-    } on GoogleRoutesException catch (error) {
+    } on GoogleRoutesException catch (
+      error
+    ) {
       if (!mounted) {
         return;
       }
 
       _showMessage(error.message);
-    } catch (_) {
+    } on GooglePlacesException catch (
+      error
+    ) {
       if (!mounted) {
         return;
       }
+
+      _showMessage(error.message);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      debugPrint(
+        'DETOUR CANDIDATE SEARCH FAILED: '
+        '$error',
+      );
 
       _showMessage(
-        'Could not calculate the route. Please try again.',
+        'Could not calculate the detour. '
+        'Please try again.',
       );
     } finally {
       if (mounted) {
@@ -356,9 +466,11 @@ class _DetourScreenState extends State<DetourScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0D0D0F),
+      backgroundColor:
+          const Color(0xFF0D0D0F),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0D0D0F),
+        backgroundColor:
+            const Color(0xFF0D0D0F),
         elevation: 0,
         title: const Text(
           'DETOUR',
@@ -371,7 +483,8 @@ class _DetourScreenState extends State<DetourScreen> {
       ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(
+          padding:
+              const EdgeInsets.fromLTRB(
             20,
             10,
             20,
@@ -392,6 +505,10 @@ class _DetourScreenState extends State<DetourScreen> {
             if (_route != null) ...[
               const SizedBox(height: 18),
               _buildRouteResult(),
+              if (_detourCandidates.isNotEmpty) ...[
+                const SizedBox(height: 18),
+                _buildDetourStops(),
+              ],
             ],
             const SizedBox(height: 22),
             _buildPlanButton(),
@@ -403,7 +520,8 @@ class _DetourScreenState extends State<DetourScreen> {
 
   Widget _buildHeader() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
       children: [
         const Text(
           'YOUR ROUTE.',
@@ -429,7 +547,9 @@ class _DetourScreenState extends State<DetourScreen> {
           'Tell us where you\'re going. '
           'We\'ll figure out where you should probably stop.',
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.65),
+            color: Colors.white.withValues(
+              alpha: 0.65,
+            ),
             fontSize: 15,
             height: 1.45,
           ),
@@ -443,7 +563,8 @@ class _DetourScreenState extends State<DetourScreen> {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: const Color(0xFF1C1C1E),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius:
+            BorderRadius.circular(18),
         border: Border.all(
           color: Colors.white10,
         ),
@@ -462,7 +583,8 @@ class _DetourScreenState extends State<DetourScreen> {
 
   Widget _buildStartingLocation() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
       children: [
         const Text(
           'STARTING LOCATION',
@@ -476,16 +598,19 @@ class _DetourScreenState extends State<DetourScreen> {
         const SizedBox(height: 8),
         InkWell(
           onTap: _useCurrentLocation,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius:
+              BorderRadius.circular(12),
           child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(
+            padding:
+                const EdgeInsets.symmetric(
               horizontal: 14,
               vertical: 14,
             ),
             decoration: BoxDecoration(
               color: const Color(0xFF0D0D0F),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius:
+                  BorderRadius.circular(12),
               border: Border.all(
                 color: Colors.white10,
               ),
@@ -503,9 +628,10 @@ class _DetourScreenState extends State<DetourScreen> {
                     _startingPoint?.name ??
                         'Use current location',
                     style: TextStyle(
-                      color: _startingPoint == null
-                          ? Colors.white54
-                          : Colors.white,
+                      color:
+                          _startingPoint == null
+                              ? Colors.white54
+                              : Colors.white,
                       fontSize: 16,
                       fontWeight:
                           _startingPoint == null
@@ -518,9 +644,11 @@ class _DetourScreenState extends State<DetourScreen> {
                   const SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(
+                    child:
+                        CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Color(0xFFD4AF37),
+                      color:
+                          Color(0xFFD4AF37),
                     ),
                   )
                 else
@@ -541,15 +669,19 @@ class _DetourScreenState extends State<DetourScreen> {
       children: [
         Expanded(
           child: Divider(
-            color: Colors.white.withValues(alpha: 0.08),
+            color: Colors.white.withValues(
+              alpha: 0.08,
+            ),
           ),
         ),
         const SizedBox(width: 10),
         IconButton(
           onPressed: _swapLocations,
-          tooltip: 'Swap start and destination',
+          tooltip:
+              'Swap start and destination',
           style: IconButton.styleFrom(
-            backgroundColor: const Color(0xFF0D0D0F),
+            backgroundColor:
+                const Color(0xFF0D0D0F),
             side: const BorderSide(
               color: Colors.white10,
             ),
@@ -562,7 +694,9 @@ class _DetourScreenState extends State<DetourScreen> {
         const SizedBox(width: 10),
         Expanded(
           child: Divider(
-            color: Colors.white.withValues(alpha: 0.08),
+            color: Colors.white.withValues(
+              alpha: 0.08,
+            ),
           ),
         ),
       ],
@@ -571,7 +705,8 @@ class _DetourScreenState extends State<DetourScreen> {
 
   Widget _buildDestinationField() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
       children: [
         const Text(
           'DESTINATION',
@@ -600,44 +735,63 @@ class _DetourScreenState extends State<DetourScreen> {
               Icons.search,
               color: Color(0xFFD4AF37),
             ),
-            suffixIcon: _destination != null
-                ? IconButton(
-                    onPressed: _clearDestination,
-                    icon: const Icon(
-                      Icons.clear,
-                      color: Colors.white54,
-                    ),
-                  )
-                : _searching
-                    ? const Padding(
-                        padding: EdgeInsets.all(14),
-                        child: SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Color(0xFFD4AF37),
-                          ),
+            suffixIcon:
+                _destination != null
+                    ? IconButton(
+                        onPressed:
+                            _clearDestination,
+                        icon: const Icon(
+                          Icons.clear,
+                          color:
+                              Colors.white54,
                         ),
                       )
-                    : null,
+                    : _searching
+                        ? const Padding(
+                            padding:
+                                EdgeInsets.all(
+                              14,
+                            ),
+                            child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child:
+                                  CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color:
+                                    Color(
+                                  0xFFD4AF37,
+                                ),
+                              ),
+                            ),
+                          )
+                        : null,
             filled: true,
-            fillColor: const Color(0xFF0D0D0F),
+            fillColor:
+                const Color(0xFF0D0D0F),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
+              borderRadius:
+                  BorderRadius.circular(12),
+              borderSide:
+                  const BorderSide(
                 color: Colors.white10,
               ),
             ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
+            enabledBorder:
+                OutlineInputBorder(
+              borderRadius:
+                  BorderRadius.circular(12),
+              borderSide:
+                  const BorderSide(
                 color: Colors.white10,
               ),
             ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
+            focusedBorder:
+                OutlineInputBorder(
+              borderRadius:
+                  BorderRadius.circular(12),
+              borderSide:
+                  const BorderSide(
                 color: Color(0xFFD4AF37),
               ),
             ),
@@ -645,7 +799,8 @@ class _DetourScreenState extends State<DetourScreen> {
         ),
         if (_destination != null)
           Padding(
-            padding: const EdgeInsets.only(
+            padding:
+                const EdgeInsets.only(
               top: 8,
               left: 4,
             ),
@@ -653,7 +808,8 @@ class _DetourScreenState extends State<DetourScreen> {
               _destination!.address ??
                   'Destination selected',
               maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+              overflow:
+                  TextOverflow.ellipsis,
               style: const TextStyle(
                 color: Colors.white38,
                 fontSize: 12,
@@ -670,12 +826,14 @@ class _DetourScreenState extends State<DetourScreen> {
       child: Column(
         children: [
           for (var index = 0;
-              index < _searchResults.length;
+              index <
+                  _searchResults.length;
               index++) ...[
             _buildSearchResultTile(
               _searchResults[index],
             ),
-            if (index != _searchResults.length - 1)
+            if (index !=
+                _searchResults.length - 1)
               const Divider(
                 color: Colors.white10,
                 height: 1,
@@ -690,12 +848,14 @@ class _DetourScreenState extends State<DetourScreen> {
     CrawlLocationSearchResult result,
   ) {
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(
+      contentPadding:
+          const EdgeInsets.symmetric(
         horizontal: 4,
         vertical: 4,
       ),
       leading: const CircleAvatar(
-        backgroundColor: Color(0xFF0D0D0F),
+        backgroundColor:
+            Color(0xFF0D0D0F),
         child: Icon(
           Icons.location_on_outlined,
           color: Color(0xFFD4AF37),
@@ -704,7 +864,8 @@ class _DetourScreenState extends State<DetourScreen> {
       title: Text(
         result.name,
         maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+        overflow:
+            TextOverflow.ellipsis,
         style: const TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.w700,
@@ -715,12 +876,14 @@ class _DetourScreenState extends State<DetourScreen> {
           : Text(
               result.address!,
               maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+              overflow:
+                  TextOverflow.ellipsis,
               style: const TextStyle(
                 color: Colors.white54,
               ),
             ),
-      onTap: () => _selectSearchResult(result),
+      onTap: () =>
+          _selectSearchResult(result),
     );
   }
 
@@ -729,7 +892,8 @@ class _DetourScreenState extends State<DetourScreen> {
       return const SizedBox(
         height: 80,
         child: Center(
-          child: CircularProgressIndicator(
+          child:
+              CircularProgressIndicator(
             color: Color(0xFFD4AF37),
           ),
         ),
@@ -737,9 +901,12 @@ class _DetourScreenState extends State<DetourScreen> {
     }
 
     final hasRecent =
-        recentDetourDestinations.isNotEmpty;
+        recentDetourDestinations
+            .isNotEmpty;
+
     final hasSaved =
-        savedDetourDestinations.isNotEmpty;
+        savedDetourDestinations
+            .isNotEmpty;
 
     if (!hasRecent && !hasSaved) {
       return const SizedBox.shrink();
@@ -750,14 +917,16 @@ class _DetourScreenState extends State<DetourScreen> {
         if (hasRecent)
           _buildDestinationSection(
             title: 'RECENT DESTINATIONS',
-            destinations: recentDetourDestinations,
+            destinations:
+                recentDetourDestinations,
           ),
         if (hasRecent && hasSaved)
           const SizedBox(height: 14),
         if (hasSaved)
           _buildDestinationSection(
             title: 'SAVED DESTINATIONS',
-            destinations: savedDetourDestinations,
+            destinations:
+                savedDetourDestinations,
           ),
       ],
     );
@@ -765,19 +934,22 @@ class _DetourScreenState extends State<DetourScreen> {
 
   Widget _buildDestinationSection({
     required String title,
-    required List<DetourEndpoint> destinations,
+    required List<DetourEndpoint>
+        destinations,
   }) {
     return _buildSectionCard(
       title: title,
       child: Column(
         children: [
           for (var index = 0;
-              index < destinations.length;
+              index <
+                  destinations.length;
               index++) ...[
             _buildDestinationTile(
               destinations[index],
             ),
-            if (index != destinations.length - 1)
+            if (index !=
+                destinations.length - 1)
               const Divider(
                 color: Colors.white10,
                 height: 1,
@@ -792,10 +964,13 @@ class _DetourScreenState extends State<DetourScreen> {
     DetourEndpoint destination,
   ) {
     final saved =
-        isSavedDetourDestination(destination);
+        isSavedDetourDestination(
+      destination,
+    );
 
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(
+      contentPadding:
+          const EdgeInsets.symmetric(
         horizontal: 4,
         vertical: 3,
       ),
@@ -808,18 +983,21 @@ class _DetourScreenState extends State<DetourScreen> {
       title: Text(
         destination.name,
         maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+        overflow:
+            TextOverflow.ellipsis,
         style: const TextStyle(
           color: Colors.white,
           fontWeight: FontWeight.w700,
         ),
       ),
-      subtitle: destination.address == null
+      subtitle: destination.address ==
+              null
           ? null
           : Text(
               destination.address!,
               maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+              overflow:
+                  TextOverflow.ellipsis,
               style: const TextStyle(
                 color: Colors.white38,
                 fontSize: 12,
@@ -830,15 +1008,19 @@ class _DetourScreenState extends State<DetourScreen> {
             ? 'Remove saved destination'
             : 'Save destination',
         onPressed: () =>
-            _toggleSavedDestination(destination),
+            _toggleSavedDestination(
+          destination,
+        ),
         icon: Icon(
           saved
               ? Icons.bookmark
               : Icons.bookmark_border,
-          color: const Color(0xFFD4AF37),
+          color:
+              const Color(0xFFD4AF37),
         ),
       ),
-      onTap: () => _selectDestination(destination),
+      onTap: () =>
+          _selectDestination(destination),
     );
   }
 
@@ -848,7 +1030,8 @@ class _DetourScreenState extends State<DetourScreen> {
       trailing: IconButton(
         onPressed: () {
           setState(() {
-            _showPreferences = !_showPreferences;
+            _showPreferences =
+                !_showPreferences;
           });
         },
         icon: Icon(
@@ -874,14 +1057,16 @@ class _DetourScreenState extends State<DetourScreen> {
     return Row(
       children: [
         Expanded(
-          child: _preferenceSummaryItem(
+          child:
+              _preferenceSummaryItem(
             Icons.alt_route,
             '${_preferences.maximumDetourKm.toStringAsFixed(0)} km',
             'MAX DETOUR',
           ),
         ),
         Expanded(
-          child: _preferenceSummaryItem(
+          child:
+              _preferenceSummaryItem(
             Icons.star_outline,
             _preferences.minimumRating
                 .toStringAsFixed(1),
@@ -889,7 +1074,8 @@ class _DetourScreenState extends State<DetourScreen> {
           ),
         ),
         Expanded(
-          child: _preferenceSummaryItem(
+          child:
+              _preferenceSummaryItem(
             Icons.pin_drop_outlined,
             '${_preferences.maximumStops}',
             'MAX STOPS',
@@ -935,7 +1121,8 @@ class _DetourScreenState extends State<DetourScreen> {
 
   Widget _buildPreferenceControls() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment:
+          CrossAxisAlignment.start,
       children: [
         const Text(
           'MAXIMUM ACCEPTABLE DETOUR',
@@ -947,12 +1134,14 @@ class _DetourScreenState extends State<DetourScreen> {
           ),
         ),
         Slider(
-          value: _preferences.maximumDetourKm
+          value: _preferences
+              .maximumDetourKm
               .clamp(1, 100),
           min: 1,
           max: 100,
           divisions: 99,
-          activeColor: const Color(0xFFD4AF37),
+          activeColor:
+              const Color(0xFFD4AF37),
           inactiveColor: Colors.white12,
           label:
               '${_preferences.maximumDetourKm.toStringAsFixed(0)} km',
@@ -975,15 +1164,18 @@ class _DetourScreenState extends State<DetourScreen> {
           ),
         ),
         Slider(
-          value: _preferences.minimumRating
+          value: _preferences
+              .minimumRating
               .clamp(0, 5),
           min: 0,
           max: 5,
           divisions: 10,
-          activeColor: const Color(0xFFD4AF37),
+          activeColor:
+              const Color(0xFFD4AF37),
           inactiveColor: Colors.white12,
-          label:
-              _preferences.minimumRating.toStringAsFixed(1),
+          label: _preferences
+              .minimumRating
+              .toStringAsFixed(1),
           onChanged: (value) {
             _updatePreferences(
               _preferences.copyWith(
@@ -1003,12 +1195,15 @@ class _DetourScreenState extends State<DetourScreen> {
           ),
         ),
         DropdownButtonFormField<int>(
-          initialValue: _preferences.maximumStops,
-          dropdownColor: const Color(0xFF1C1C1E),
+          initialValue:
+              _preferences.maximumStops,
+          dropdownColor:
+              const Color(0xFF1C1C1E),
           style: const TextStyle(
             color: Colors.white,
           ),
-          decoration: _preferenceInputDecoration(),
+          decoration:
+              _preferenceInputDecoration(),
           items: const [
             DropdownMenuItem(
               value: 1,
@@ -1068,7 +1263,8 @@ class _DetourScreenState extends State<DetourScreen> {
           title: 'Open now only',
           subtitle:
               'Only consider venues currently open.',
-          value: _preferences.openNowOnly,
+          value:
+              _preferences.openNowOnly,
           onChanged: (value) {
             _updatePreferences(
               _preferences.copyWith(
@@ -1081,11 +1277,13 @@ class _DetourScreenState extends State<DetourScreen> {
           title: 'Avoid visited or saved',
           subtitle:
               'Skip places you have already saved or visited.',
-          value: _preferences.avoidVisitedOrSaved,
+          value: _preferences
+              .avoidVisitedOrSaved,
           onChanged: (value) {
             _updatePreferences(
               _preferences.copyWith(
-                avoidVisitedOrSaved: value,
+                avoidVisitedOrSaved:
+                    value,
               ),
             );
           },
@@ -1094,11 +1292,13 @@ class _DetourScreenState extends State<DetourScreen> {
           title: 'Allow overnight stops',
           subtitle:
               'Allow the future route planner to consider overnight stops.',
-          value: _preferences.allowOvernightStops,
+          value: _preferences
+              .allowOvernightStops,
           onChanged: (value) {
             _updatePreferences(
               _preferences.copyWith(
-                allowOvernightStops: value,
+                allowOvernightStops:
+                    value,
               ),
             );
           },
@@ -1114,17 +1314,22 @@ class _DetourScreenState extends State<DetourScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        SegmentedButton<DetourRoutePreference>(
+        SegmentedButton<
+            DetourRoutePreference>(
           segments: const [
             ButtonSegment(
-              value: DetourRoutePreference.flexible,
+              value:
+                  DetourRoutePreference
+                      .flexible,
               label: Text('Flexible'),
               icon: Icon(
                 Icons.alt_route,
               ),
             ),
             ButtonSegment(
-              value: DetourRoutePreference.strict,
+              value:
+                  DetourRoutePreference
+                      .strict,
               label: Text('Strict'),
               icon: Icon(
                 Icons.route,
@@ -1134,36 +1339,46 @@ class _DetourScreenState extends State<DetourScreen> {
           selected: {
             _preferences.routePreference,
           },
-          onSelectionChanged: (selection) {
+          onSelectionChanged:
+              (selection) {
             _updatePreferences(
               _preferences.copyWith(
-                routePreference: selection.first,
+                routePreference:
+                    selection.first,
               ),
             );
           },
           style: ButtonStyle(
             foregroundColor:
-                WidgetStateProperty.resolveWith(
+                WidgetStateProperty
+                    .resolveWith(
               (states) {
                 if (states.contains(
                   WidgetState.selected,
                 )) {
-                  return const Color(0xFF0D0D0F);
+                  return const Color(
+                    0xFF0D0D0F,
+                  );
                 }
 
                 return Colors.white70;
               },
             ),
             backgroundColor:
-                WidgetStateProperty.resolveWith(
+                WidgetStateProperty
+                    .resolveWith(
               (states) {
                 if (states.contains(
                   WidgetState.selected,
                 )) {
-                  return const Color(0xFFD4AF37);
+                  return const Color(
+                    0xFFD4AF37,
+                  );
                 }
 
-                return const Color(0xFF0D0D0F);
+                return const Color(
+                  0xFF0D0D0F,
+                );
               },
             ),
           ),
@@ -1200,7 +1415,8 @@ class _DetourScreenState extends State<DetourScreen> {
       children: categories.map(
         (category) {
           final selected =
-              _preferences.preferredCategories
+              _preferences
+                  .preferredCategories
                   .contains(category);
 
           return FilterChip(
@@ -1209,7 +1425,8 @@ class _DetourScreenState extends State<DetourScreen> {
             onSelected: (value) {
               final updated =
                   Set<String>.from(
-                _preferences.preferredCategories,
+                _preferences
+                    .preferredCategories,
               );
 
               if (value) {
@@ -1220,7 +1437,8 @@ class _DetourScreenState extends State<DetourScreen> {
 
               _updatePreferences(
                 _preferences.copyWith(
-                  preferredCategories: updated,
+                  preferredCategories:
+                      updated,
                 ),
               );
             },
@@ -1235,9 +1453,12 @@ class _DetourScreenState extends State<DetourScreen> {
             ),
             labelStyle: TextStyle(
               color: selected
-                  ? const Color(0xFF0D0D0F)
+                  ? const Color(
+                      0xFF0D0D0F,
+                    )
                   : Colors.white70,
-              fontWeight: FontWeight.w700,
+              fontWeight:
+                  FontWeight.w700,
             ),
           );
         },
@@ -1249,7 +1470,8 @@ class _DetourScreenState extends State<DetourScreen> {
     required String title,
     required String subtitle,
     required bool value,
-    required ValueChanged<bool> onChanged,
+    required ValueChanged<bool>
+        onChanged,
   }) {
     return SwitchListTile(
       contentPadding: EdgeInsets.zero,
@@ -1280,19 +1502,26 @@ class _DetourScreenState extends State<DetourScreen> {
     );
   }
 
-  InputDecoration _preferenceInputDecoration() {
+  InputDecoration
+      _preferenceInputDecoration() {
     return InputDecoration(
       filled: true,
-      fillColor: const Color(0xFF0D0D0F),
+      fillColor:
+          const Color(0xFF0D0D0F),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(
+        borderRadius:
+            BorderRadius.circular(12),
+        borderSide:
+            const BorderSide(
           color: Colors.white10,
         ),
       ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(
+      enabledBorder:
+          OutlineInputBorder(
+        borderRadius:
+            BorderRadius.circular(12),
+        borderSide:
+            const BorderSide(
           color: Colors.white10,
         ),
       ),
@@ -1313,18 +1542,110 @@ class _DetourScreenState extends State<DetourScreen> {
           Expanded(
             child: _routeSummaryItem(
               Icons.route,
-              _formatDistance(route.distanceKilometers),
+              _formatDistance(
+                route.distanceKilometers,
+              ),
               'DRIVING DISTANCE',
             ),
           ),
           Expanded(
             child: _routeSummaryItem(
               Icons.schedule_outlined,
-              _formatDuration(route.durationMinutes),
+              _formatDuration(
+                route.durationMinutes,
+              ),
               'EST. DRIVE TIME',
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDetourStops() {
+    if (_detourCandidates.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final stopCount = _preferences.maximumStops;
+    final stops = _detourCandidates.take(stopCount).toList();
+
+    return _buildSectionCard(
+      title: 'RECOMMENDED STOPS',
+      trailing: Text(
+        '${stops.length}/$stopCount',
+        style: const TextStyle(
+          color: Colors.white38,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      child: Column(
+        children: [
+          for (var index = 0; index < stops.length; index++) ...[
+            _buildDetourStopTile(
+              stops[index],
+              index + 1,
+            ),
+            if (index != stops.length - 1)
+              const Divider(
+                color: Colors.white10,
+                height: 1,
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetourStopTile(
+    dynamic candidate,
+    int stopNumber,
+  ) {
+    final name = candidate.name?.toString() ?? 'Unnamed venue';
+    final rating = candidate.diningUnhingedRating;
+
+    String? ratingText;
+    if (rating is num) {
+      ratingText = rating.toStringAsFixed(1);
+    }
+
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 4,
+        vertical: 6,
+      ),
+      leading: CircleAvatar(
+        backgroundColor: const Color(0xFF0D0D0F),
+        child: Text(
+          '$stopNumber',
+          style: const TextStyle(
+            color: Color(0xFFD4AF37),
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+      title: Text(
+        name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      subtitle: ratingText == null
+          ? null
+          : Text(
+              'Dining Unhinged rating: $ratingText',
+              style: const TextStyle(
+                color: Colors.white54,
+                fontSize: 12,
+              ),
+            ),
+      trailing: const Icon(
+        Icons.alt_route,
+        color: Color(0xFFD4AF37),
       ),
     );
   }
@@ -1365,7 +1686,9 @@ class _DetourScreenState extends State<DetourScreen> {
     );
   }
 
-  String _formatDistance(double kilometers) {
+  String _formatDistance(
+    double kilometers,
+  ) {
     if (kilometers < 10) {
       return '${kilometers.toStringAsFixed(1)} km';
     }
@@ -1373,10 +1696,17 @@ class _DetourScreenState extends State<DetourScreen> {
     return '${kilometers.toStringAsFixed(0)} km';
   }
 
-  String _formatDuration(double minutes) {
-    final totalMinutes = minutes.round();
-    final hours = totalMinutes ~/ 60;
-    final remainingMinutes = totalMinutes % 60;
+  String _formatDuration(
+    double minutes,
+  ) {
+    final totalMinutes =
+        minutes.round();
+
+    final hours =
+        totalMinutes ~/ 60;
+
+    final remainingMinutes =
+        totalMinutes % 60;
 
     if (hours == 0) {
       return '$remainingMinutes min';
@@ -1386,7 +1716,8 @@ class _DetourScreenState extends State<DetourScreen> {
       return '$hours hr';
     }
 
-    return '$hours hr $remainingMinutes min';
+    return '$hours hr '
+        '$remainingMinutes min';
   }
 
   Widget _buildPlanButton() {
@@ -1394,23 +1725,32 @@ class _DetourScreenState extends State<DetourScreen> {
       height: 56,
       width: double.infinity,
       child: FilledButton.icon(
-        onPressed: _planning ? null : _planDetour,
-        style: FilledButton.styleFrom(
+        onPressed:
+            _planning
+                ? null
+                : _planDetour,
+        style:
+            FilledButton.styleFrom(
           backgroundColor:
               const Color(0xFFD4AF37),
           foregroundColor:
               const Color(0xFF0D0D0F),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+          shape:
+              RoundedRectangleBorder(
+            borderRadius:
+                BorderRadius.circular(14),
           ),
         ),
         icon: _planning
             ? const SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(
+                child:
+                    CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: Color(0xFF0D0D0F),
+                  color: Color(
+                    0xFF0D0D0F,
+                  ),
                 ),
               )
             : const Icon(
@@ -1438,7 +1778,8 @@ class _DetourScreenState extends State<DetourScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: const Color(0xFF1C1C1E),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius:
+            BorderRadius.circular(16),
         border: Border.all(
           color: Colors.white10,
         ),
@@ -1453,14 +1794,17 @@ class _DetourScreenState extends State<DetourScreen> {
                 child: Text(
                   title,
                   style: const TextStyle(
-                    color: Color(0xFFD4AF37),
+                    color:
+                        Color(0xFFD4AF37),
                     fontSize: 11,
-                    fontWeight: FontWeight.w900,
+                    fontWeight:
+                        FontWeight.w900,
                     letterSpacing: 1.3,
                   ),
                 ),
               ),
-              ?trailing,
+              if (trailing != null)
+                trailing,
             ],
           ),
           const SizedBox(height: 12),
