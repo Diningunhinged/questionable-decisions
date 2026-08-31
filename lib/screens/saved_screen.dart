@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../features/crawl/models/saved_crawl.dart';
+import '../features/detour/models/detour_trip.dart';
 import '../features/crawl/screens/crawl_builder_screen.dart';
 import '../features/crawl/services/saved_store.dart';
+import '../features/detour/services/detour_trip_store.dart';
 import '../models/nearby_result.dart';
 import 'crawl_screen.dart';
 
@@ -16,6 +18,7 @@ class SavedScreen extends StatefulWidget {
 
 class _SavedScreenState extends State<SavedScreen> {
   bool _loadingCrawls = true;
+  bool _loadingDetours = true;
 
   @override
   void initState() {
@@ -24,7 +27,10 @@ class _SavedScreenState extends State<SavedScreen> {
   }
 
   Future<void> _loadCrawls() async {
-    await loadSavedCrawls();
+    await Future.wait([
+      loadSavedCrawls(),
+      loadSavedDetourTrips(),
+    ]);
 
     if (!mounted) {
       return;
@@ -32,6 +38,7 @@ class _SavedScreenState extends State<SavedScreen> {
 
     setState(() {
       _loadingCrawls = false;
+      _loadingDetours = false;
     });
   }
 
@@ -412,6 +419,199 @@ class _SavedScreenState extends State<SavedScreen> {
     );
   }
 
+  String _detourSummary(DetourTrip trip) {
+    final distanceKm =
+        trip.routeDistanceMeters == null
+            ? null
+            : trip.routeDistanceMeters! / 1000;
+
+    final durationMinutes =
+        trip.routeDurationSeconds == null
+            ? null
+            : trip.routeDurationSeconds! / 60;
+
+    final parts = <String>[
+      '${trip.stops.length} stops',
+    ];
+
+    if (distanceKm != null) {
+      parts.add(
+        '${distanceKm.toStringAsFixed(0)} km',
+      );
+    }
+
+    if (durationMinutes != null) {
+      parts.add(
+        '${durationMinutes.toStringAsFixed(0)} min',
+      );
+    }
+
+    return parts.join(' · ');
+  }
+
+  Future<void> _deleteSavedDetour(
+    DetourTrip trip,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1C1C1E),
+          title: const Text(
+            'DELETE DETOUR?',
+            style: TextStyle(
+              color: Color(0xFFD4AF37),
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          content: Text(
+            'Delete "${trip.start.name} → ${trip.destination.name}" from Saved?',
+            style: const TextStyle(
+              color: Colors.white70,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text(
+                'CANCEL',
+                style: TextStyle(
+                  color: Colors.white54,
+                ),
+              ),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFD4AF37),
+                foregroundColor: const Color(0xFF0D0D0F),
+              ),
+              child: const Text(
+                'DELETE',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    await deleteSavedDetourTrip(trip.id);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Detour deleted.'),
+      ),
+    );
+  }
+
+  Widget _savedDetourCard(DetourTrip trip) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1C1C1E),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF333337),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          16,
+          16,
+          10,
+          14,
+        ),
+        child: Column(
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.alt_route,
+                  color: Color(0xFFD4AF37),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '${trip.start.name} → ${trip.destination.name}',
+                    maxLines: 2,
+                    overflow:
+                        TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () =>
+                      _deleteSavedDetour(trip),
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.white38,
+                  ),
+                  tooltip: 'Delete',
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _formatDate(trip.createdAt),
+              style: const TextStyle(
+                color: Color(0xFFD4AF37),
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _detourSummary(trip),
+              style: const TextStyle(
+                color: Colors.white54,
+                fontSize: 13,
+              ),
+            ),
+            if (trip.stops.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                trip.stops
+                    .map((stop) => stop.name)
+                    .join(' · '),
+                maxLines: 2,
+                overflow:
+                    TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _savedPlaceholder() {
     return Container(
       width: 76,
@@ -475,8 +675,8 @@ class _SavedScreenState extends State<SavedScreen> {
         28,
       ),
       itemCount: saved.length,
-      separatorBuilder: (_, _) =>
-    const SizedBox(height: 14),
+      separatorBuilder: (_, __) =>
+          const SizedBox(height: 14),
       itemBuilder: (context, index) {
         final result = saved[index];
 
@@ -505,8 +705,8 @@ class _SavedScreenState extends State<SavedScreen> {
                       width: 76,
                       height: 76,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) =>
-    _savedPlaceholder(),
+                      errorBuilder: (_, __, ___) =>
+                          _savedPlaceholder(),
                     ),
                   )
                 else
@@ -577,6 +777,14 @@ class _SavedScreenState extends State<SavedScreen> {
         ),
       );
 
+    final detours = List<DetourTrip>.from(
+      savedDetourTrips,
+    )..sort(
+        (a, b) => b.createdAt.compareTo(
+          a.createdAt,
+        ),
+      );
+
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0F),
       appBar: AppBar(
@@ -610,6 +818,29 @@ class _SavedScreenState extends State<SavedScreen> {
                   28,
                 ),
                 children: [
+                  if (detours.isNotEmpty) ...[
+                    const Text(
+                      'SAVED DETOURS',
+                      style: TextStyle(
+                        color: Color(0xFFD4AF37),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.6,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ...detours.map(
+                      (detour) => Padding(
+                        padding:
+                            const EdgeInsets.only(
+                          bottom: 14,
+                        ),
+                        child: _savedDetourCard(detour),
+                      ),
+                    ),
+                    if (crawls.isNotEmpty)
+                      const SizedBox(height: 14),
+                  ],
                   if (crawls.isNotEmpty) ...[
                     const Text(
                       'SAVED CRAWLS',

@@ -11,11 +11,13 @@ import '../models/detour_endpoint.dart';
 import '../models/detour_route.dart';
 import '../models/detour_venue.dart';
 import '../models/detour_preferences.dart';
+import '../models/detour_trip.dart';
 import '../models/dining_unhinged_review.dart';
 import '../services/detour_destination_store.dart';
 import '../services/detour_candidate_service.dart';
 import '../services/detour_route_service.dart';
 import '../services/detour_route_optimizer.dart';
+import '../services/detour_trip_store.dart';
 import '../services/dining_unhinged_review_service.dart';
 import '../services/google_places_provider.dart';
 import '../services/google_routes_provider.dart';
@@ -73,6 +75,9 @@ class _DetourScreenState extends State<DetourScreen> {
   bool _loadingCurrentLocation = false;
   bool _loadingDestinations = true;
   bool _showPreferences = false;
+  bool _detourSaved = false;
+  String? _currentTripId;
+  DateTime? _currentTripCreatedAt;
 
   @override
   void initState() {
@@ -352,6 +357,9 @@ class _DetourScreenState extends State<DetourScreen> {
       _planning = true;
       _route = null;
       _optimizedStops = [];
+      _detourSaved = false;
+      _currentTripId = null;
+      _currentTripCreatedAt = null;
     });
 
     try {
@@ -421,9 +429,15 @@ class _DetourScreenState extends State<DetourScreen> {
         return;
       }
 
+      final now = DateTime.now();
+
       setState(() {
         _route = optimization.route;
         _optimizedStops = optimization.stops;
+        _currentTripId =
+            'detour_trip_${now.microsecondsSinceEpoch}';
+        _currentTripCreatedAt = now;
+        _detourSaved = false;
       });
 
       debugPrint(
@@ -1115,6 +1129,152 @@ class _DetourScreenState extends State<DetourScreen> {
     }
   }
 
+  Future<void> _saveCurrentDetour() async {
+    final start = _startingPoint;
+    final destination = _destination;
+    final route = _route;
+
+    if (start == null ||
+        destination == null ||
+        route == null ||
+        !start.isValid ||
+        !destination.isValid ||
+        !route.isValid) {
+      _showMessage(
+        'This detour is not ready to save.',
+      );
+      return;
+    }
+
+    final now = DateTime.now();
+
+    final trip = DetourTrip.fromRoute(
+      id:
+          _currentTripId ??
+          'detour_trip_${now.microsecondsSinceEpoch}',
+      createdAt:
+          _currentTripCreatedAt ?? now,
+      updatedAt: now,
+      start: start,
+      destination: destination,
+      stops: List<DetourVenue>.from(
+        _optimizedStops,
+      ),
+      route: route,
+    );
+
+    try {
+      await saveDetourTrip(trip);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _currentTripId = trip.id;
+        _currentTripCreatedAt = trip.createdAt;
+        _detourSaved = true;
+      });
+
+      _showMessage('Detour saved.');
+    } catch (error) {
+      debugPrint(
+        'DETOUR SAVE FAILED: $error',
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage(
+        'Could not save this detour.',
+      );
+    }
+  }
+
+  Widget _buildDetourSaveActions() {
+    if (_detourSaved) {
+      return _buildSectionCard(
+        title: 'DETOUR SAVED',
+        child: Row(
+          children: [
+            const Icon(
+              Icons.check_circle,
+              color: Color(0xFFD4AF37),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'This detour is saved for later.',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return _buildSectionCard(
+      title: 'KEEP THIS DETOUR?',
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: _planning
+                  ? null
+                  : () {
+                      setState(() {
+                        _detourSaved = false;
+                      });
+                    },
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white70,
+                side: const BorderSide(
+                  color: Colors.white24,
+                ),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 14,
+                ),
+              ),
+              child: const Text(
+                'NOT NOW',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 2,
+            child: FilledButton.icon(
+              onPressed:
+                  _planning ? null : _saveCurrentDetour,
+              icon: const Icon(
+                Icons.bookmark_border,
+              ),
+              label: const Text(
+                'SAVE',
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor:
+                    const Color(0xFFD4AF37),
+                foregroundColor:
+                    const Color(0xFF0D0D0F),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 14,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -1167,6 +1327,8 @@ class _DetourScreenState extends State<DetourScreen> {
               _buildRouteResult(),
               const SizedBox(height: 18),
               _buildDetourStops(),
+              const SizedBox(height: 18),
+              _buildDetourSaveActions(),
             ],
             const SizedBox(height: 22),
             _buildPlanButton(),
