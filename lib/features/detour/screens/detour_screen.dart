@@ -745,7 +745,7 @@ class _DetourScreenState extends State<DetourScreen> {
                                     bottom: 8,
                                   ),
                                   child: Text(
-                                    'KNOWN REVIEWED VENUES',
+                                    'REVIEWED BY DINING UNHINGED',
                                     style: TextStyle(
                                       color: Color(0xFFD4AF37),
                                       fontSize: 11,

@@ -6,7 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import '../models/nearby_result.dart';
 import '../services/dining_unhinged_api.dart';
 import '../services/location_service.dart';
-import '../services/saved_store.dart';
+import '../features/crawl/services/saved_store.dart';
 import '../widgets/nearby_result_card.dart';
 
 class NearbyScreen extends StatefulWidget {
@@ -47,7 +47,8 @@ class _NearbyScreenState extends State<NearbyScreen> {
     try {
       debugPrint('LOCATION: Starting location request');
 
-      final position = await LocationService.getCurrentLocation();
+      final position =
+          await LocationService.getCurrentLocation();
 
       debugPrint(
         'LOCATION: Current position = '
@@ -74,7 +75,8 @@ class _NearbyScreenState extends State<NearbyScreen> {
           continue;
         }
 
-        final distanceMeters = Geolocator.distanceBetween(
+        final distanceMeters =
+            Geolocator.distanceBetween(
           position.latitude,
           position.longitude,
           location.latitude!,
@@ -94,12 +96,16 @@ class _NearbyScreenState extends State<NearbyScreen> {
       }
 
       nearbyResults.sort(
-        (a, b) => (a.distanceKm ?? double.infinity).compareTo(
+        (a, b) =>
+            (a.distanceKm ?? double.infinity)
+                .compareTo(
           b.distanceKm ?? double.infinity,
         ),
       );
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         _allResults = nearbyResults;
@@ -111,7 +117,9 @@ class _NearbyScreenState extends State<NearbyScreen> {
         'LOCATION PERMISSION ERROR: ${e.message}',
       );
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         _loading = false;
@@ -122,7 +130,9 @@ class _NearbyScreenState extends State<NearbyScreen> {
         'LOCATION SERVICE ERROR: ${e.message}',
       );
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         _loading = false;
@@ -132,7 +142,9 @@ class _NearbyScreenState extends State<NearbyScreen> {
       debugPrint('NEARBY ERROR: $e');
       debugPrint('STACK TRACE: $stackTrace');
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         _loading = false;
@@ -181,7 +193,8 @@ class _NearbyScreenState extends State<NearbyScreen> {
     final weightedResults = <NearbyResult>[];
 
     for (final result in _results) {
-      final distance = result.distanceKm ?? _radiusKm;
+      final distance =
+          result.distanceKm ?? _radiusKm;
 
       final weight = max(
         1,
@@ -195,13 +208,11 @@ class _NearbyScreenState extends State<NearbyScreen> {
 
     if (weightedResults.isEmpty) {
       return _results[
-        Random().nextInt(_results.length)
-      ];
+          Random().nextInt(_results.length)];
     }
 
     return weightedResults[
-      Random().nextInt(weightedResults.length)
-    ];
+        Random().nextInt(weightedResults.length)];
   }
 
   void _makeTheDecision() {
@@ -225,7 +236,9 @@ class _NearbyScreenState extends State<NearbyScreen> {
     _showDecisionDialog(decision);
   }
 
-  void _showDecisionDialog(NearbyResult decision) {
+  void _showDecisionDialog(
+    NearbyResult decision,
+  ) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -247,14 +260,37 @@ class _NearbyScreenState extends State<NearbyScreen> {
               },
             );
           },
-          onLetsGo: () {
-            // "LET'S FUCKING GO" commits the decision to Saved.
-            // It does NOT open the review directly.
-            saveNearbyResult(decision);
+          onLetsGo: () async {
+            try {
+              await saveNearbyResult(decision);
 
-            Navigator.of(dialogContext).pop();
+              if (!mounted) {
+                return;
+              }
 
-            widget.onDecisionCommitted?.call();
+              Navigator.of(dialogContext).pop();
+
+              widget.onDecisionCommitted?.call();
+            } catch (error, stackTrace) {
+              debugPrint(
+                'NEARBY SAVE ERROR: $error',
+              );
+              debugPrint(
+                'NEARBY SAVE STACK TRACE: $stackTrace',
+              );
+
+              if (!mounted) {
+                return;
+              }
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Couldn\'t save that questionable decision.',
+                  ),
+                ),
+              );
+            }
           },
         );
       },
@@ -294,7 +330,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
                       ),
                     ),
                   ),
-
                   Text(
                     'QUESTIONABLE',
                     style: Theme.of(context)
@@ -304,12 +339,11 @@ class _NearbyScreenState extends State<NearbyScreen> {
                           color:
                               const Color(0xFFD4AF37),
                           letterSpacing: 4,
-                          fontWeight: FontWeight.bold,
+                          fontWeight:
+                              FontWeight.bold,
                         ),
                   ),
-
                   const SizedBox(height: 4),
-
                   Text(
                     'DECISIONS NEARBY',
                     style: Theme.of(context)
@@ -317,12 +351,11 @@ class _NearbyScreenState extends State<NearbyScreen> {
                         .headlineMedium
                         ?.copyWith(
                           color: Colors.white,
-                          fontWeight: FontWeight.w800,
+                          fontWeight:
+                              FontWeight.w800,
                         ),
                   ),
-
                   const SizedBox(height: 12),
-
                   Text(
                     'Find somewhere worth making a questionable decision.',
                     style: Theme.of(context)
@@ -332,9 +365,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                           color: Colors.white70,
                         ),
                   ),
-
                   const SizedBox(height: 28),
-
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton.icon(
@@ -349,47 +380,59 @@ class _NearbyScreenState extends State<NearbyScreen> {
                               child:
                                   CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color:
-                                    Color(0xFF0D0D0F),
+                                color: Color(
+                                  0xFF0D0D0F,
+                                ),
                               ),
                             )
                           : const Icon(
-                              Icons.location_searching,
+                              Icons
+                                  .location_searching,
                             ),
                       label: Text(
                         _loading
                             ? 'SEARCHING...'
                             : 'FIND SOMETHING NEARBY',
                       ),
-                      style: FilledButton.styleFrom(
+                      style:
+                          FilledButton.styleFrom(
                         backgroundColor:
-                            const Color(0xFFD4AF37),
+                            const Color(
+                          0xFFD4AF37,
+                        ),
                         foregroundColor:
-                            const Color(0xFF0D0D0F),
+                            const Color(
+                          0xFF0D0D0F,
+                        ),
                         disabledBackgroundColor:
-                            const Color(0xFFD4AF37),
+                            const Color(
+                          0xFFD4AF37,
+                        ),
                         disabledForegroundColor:
-                            const Color(0xFF0D0D0F),
+                            const Color(
+                          0xFF0D0D0F,
+                        ),
                         padding:
-                            const EdgeInsets.symmetric(
+                            const EdgeInsets
+                                .symmetric(
                           vertical: 16,
                         ),
                         textStyle:
                             const TextStyle(
-                          fontWeight: FontWeight.bold,
+                          fontWeight:
+                              FontWeight.bold,
                           letterSpacing: 1,
                         ),
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 14),
-
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed:
-                          _results.isEmpty || _loading
+                          _results.isEmpty ||
+                                  _loading
                               ? null
                               : _makeTheDecision,
                       icon: const Icon(
@@ -398,27 +441,32 @@ class _NearbyScreenState extends State<NearbyScreen> {
                       label: const Text(
                         'MAKE THE DECISION FOR ME',
                       ),
-                      style: OutlinedButton.styleFrom(
+                      style:
+                          OutlinedButton.styleFrom(
                         foregroundColor:
-                            const Color(0xFFD4AF37),
+                            const Color(
+                          0xFFD4AF37,
+                        ),
                         side: const BorderSide(
-                          color: Color(0xFFD4AF37),
+                          color: Color(
+                            0xFFD4AF37,
+                          ),
                         ),
                         padding:
-                            const EdgeInsets.symmetric(
+                            const EdgeInsets
+                                .symmetric(
                           vertical: 16,
                         ),
                         textStyle:
                             const TextStyle(
-                          fontWeight: FontWeight.bold,
+                          fontWeight:
+                              FontWeight.bold,
                           letterSpacing: 0.8,
                         ),
                       ),
                     ),
                   ),
-
                   const SizedBox(height: 24),
-
                   if (_allResults.isNotEmpty)
                     Column(
                       crossAxisAlignment:
@@ -427,22 +475,24 @@ class _NearbyScreenState extends State<NearbyScreen> {
                         const Text(
                           'SEARCH RADIUS',
                           style: TextStyle(
-                            color: Color(0xFFD4AF37),
+                            color:
+                                Color(0xFFD4AF37),
                             fontSize: 12,
-                            fontWeight: FontWeight.bold,
+                            fontWeight:
+                                FontWeight.bold,
                             letterSpacing: 2,
                           ),
                         ),
-
                         const SizedBox(height: 10),
-
                         SizedBox(
                           height: 44,
-                          child: ListView.separated(
+                          child:
+                              ListView.separated(
                             scrollDirection:
                                 Axis.horizontal,
                             itemCount:
-                                _radiusOptions.length,
+                                _radiusOptions
+                                    .length,
                             separatorBuilder:
                                 (context, index) =>
                                     const SizedBox(
@@ -451,18 +501,23 @@ class _NearbyScreenState extends State<NearbyScreen> {
                             itemBuilder:
                                 (context, index) {
                               final radius =
-                                  _radiusOptions[index];
+                                  _radiusOptions[
+                                      index];
 
                               final selected =
-                                  radius == _radiusKm;
+                                  radius ==
+                                      _radiusKm;
 
                               return ChoiceChip(
                                 label: Text(
                                   '${radius.toInt()} km',
                                 ),
-                                selected: selected,
+                                selected:
+                                    selected,
                                 onSelected: (_) {
-                                  _changeRadius(radius);
+                                  _changeRadius(
+                                    radius,
+                                  );
                                 },
                                 selectedColor:
                                     const Color(
@@ -478,69 +533,76 @@ class _NearbyScreenState extends State<NearbyScreen> {
                                       ? const Color(
                                           0xFF0D0D0F,
                                         )
-                                      : Colors.white70,
+                                      : Colors
+                                          .white70,
                                   fontWeight:
-                                      FontWeight.bold,
+                                      FontWeight
+                                          .bold,
                                 ),
                                 side: BorderSide(
                                   color: selected
                                       ? const Color(
                                           0xFFD4AF37,
                                         )
-                                      : Colors.white12,
+                                      : Colors
+                                          .white12,
                                 ),
                               );
                             },
                           ),
                         ),
-
                         const SizedBox(height: 20),
                       ],
                     ),
-
                   if (_error != null)
                     Container(
                       width: double.infinity,
                       padding:
                           const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color:
-                            const Color(0xFF1C1C1E),
+                        color: const Color(
+                          0xFF1C1C1E,
+                        ),
                         borderRadius:
-                            BorderRadius.circular(12),
+                            BorderRadius.circular(
+                          12,
+                        ),
                         border: Border.all(
                           color: Colors.redAccent
-                              .withValues(alpha: 0.4),
+                              .withValues(
+                            alpha: 0.4,
+                          ),
                         ),
                       ),
                       child: Column(
                         children: [
                           const Icon(
                             Icons.location_off,
-                            color: Colors.redAccent,
+                            color:
+                                Colors.redAccent,
                             size: 32,
                           ),
-
                           const SizedBox(height: 10),
-
                           Text(
                             _error!,
                             textAlign:
                                 TextAlign.center,
-                            style: const TextStyle(
-                              color: Colors.white70,
+                            style:
+                                const TextStyle(
+                              color:
+                                  Colors.white70,
                             ),
                           ),
-
                           const SizedBox(height: 14),
-
                           TextButton(
-                            onPressed: _loadNearby,
+                            onPressed:
+                                _loadNearby,
                             child: const Text(
                               'TRY AGAIN',
                               style: TextStyle(
-                                color:
-                                    Color(0xFFD4AF37),
+                                color: Color(
+                                  0xFFD4AF37,
+                                ),
                                 fontWeight:
                                     FontWeight.bold,
                               ),
@@ -549,7 +611,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
                         ],
                       ),
                     ),
-
                   if (!_loading &&
                       _error == null &&
                       _allResults.isEmpty)
@@ -560,14 +621,14 @@ class _NearbyScreenState extends State<NearbyScreen> {
                       ),
                       child: Text(
                         'Tap the button and let the questionable decisions begin.',
-                        textAlign: TextAlign.center,
+                        textAlign:
+                            TextAlign.center,
                         style: TextStyle(
                           color: Colors.white54,
                           fontSize: 15,
                         ),
                       ),
                     ),
-
                   if (_allResults.isNotEmpty)
                     Padding(
                       padding:
@@ -578,21 +639,23 @@ class _NearbyScreenState extends State<NearbyScreen> {
                         children: [
                           Text(
                             '${_results.length} nearby',
-                            style: const TextStyle(
-                              color: Colors.white60,
+                            style:
+                                const TextStyle(
+                              color:
+                                  Colors.white60,
                               fontSize: 14,
                               fontWeight:
                                   FontWeight.w600,
                             ),
                           ),
-
                           const Spacer(),
-
                           Text(
                             'within ${_radiusKm.toInt()} km',
-                            style: const TextStyle(
-                              color:
-                                  Color(0xFFD4AF37),
+                            style:
+                                const TextStyle(
+                              color: Color(
+                                0xFFD4AF37,
+                              ),
                               fontSize: 14,
                               fontWeight:
                                   FontWeight.w600,
@@ -604,7 +667,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
                 ]),
               ),
             ),
-
             if (_results.isNotEmpty)
               SliverPadding(
                 padding:
@@ -628,12 +690,12 @@ class _NearbyScreenState extends State<NearbyScreen> {
                         ),
                         child: Column(
                           crossAxisAlignment:
-                              CrossAxisAlignment.start,
+                              CrossAxisAlignment
+                                  .start,
                           children: [
                             NearbyResultCard(
                               result: result,
                             ),
-
                             if (result.distanceKm !=
                                 null)
                               Padding(
@@ -649,8 +711,9 @@ class _NearbyScreenState extends State<NearbyScreen> {
                                       Icons
                                           .near_me_outlined,
                                       size: 15,
-                                      color:
-                                          Color(0xFFD4AF37),
+                                      color: Color(
+                                        0xFFD4AF37,
+                                      ),
                                     ),
                                     const SizedBox(
                                       width: 5,
@@ -662,11 +725,12 @@ class _NearbyScreenState extends State<NearbyScreen> {
                                       ),
                                       style:
                                           const TextStyle(
-                                        color:
-                                            Colors.white54,
+                                        color: Colors
+                                            .white54,
                                         fontSize: 13,
                                         fontWeight:
-                                            FontWeight.w600,
+                                            FontWeight
+                                                .w600,
                                       ),
                                     ),
                                   ],
@@ -676,11 +740,11 @@ class _NearbyScreenState extends State<NearbyScreen> {
                         ),
                       );
                     },
-                    childCount: _results.length,
+                    childCount:
+                        _results.length,
                   ),
                 ),
               ),
-
             if (!_loading &&
                 _error == null &&
                 _allResults.isNotEmpty &&
@@ -698,12 +762,11 @@ class _NearbyScreenState extends State<NearbyScreen> {
                         const Icon(
                           Icons.location_off,
                           size: 52,
-                          color:
-                              Color(0xFFD4AF37),
+                          color: Color(
+                            0xFFD4AF37,
+                          ),
                         ),
-
                         const SizedBox(height: 18),
-
                         const Text(
                           'Nothing questionable nearby.',
                           textAlign:
@@ -715,15 +778,14 @@ class _NearbyScreenState extends State<NearbyScreen> {
                                 FontWeight.bold,
                           ),
                         ),
-
                         const SizedBox(height: 8),
-
                         const Text(
                           'Try expanding the search radius.',
                           textAlign:
                               TextAlign.center,
                           style: TextStyle(
-                            color: Colors.white54,
+                            color:
+                                Colors.white54,
                           ),
                         ),
                       ],
@@ -742,7 +804,7 @@ class _DecisionDialog extends StatelessWidget {
   final NearbyResult result;
   final String distance;
   final VoidCallback onRollAgain;
-  final VoidCallback onLetsGo;
+  final Future<void> Function() onLetsGo;
 
   const _DecisionDialog({
     required this.result,
@@ -771,30 +833,26 @@ class _DecisionDialog extends StatelessWidget {
               const Icon(
                 Icons.casino,
                 size: 54,
-                color:
-                    Color(0xFFD4AF37),
+                color: Color(0xFFD4AF37),
               ),
-
               const SizedBox(height: 14),
-
               const Text(
                 'THE DECISION',
                 style: TextStyle(
-                  color:
-                      Color(0xFFD4AF37),
+                  color: Color(0xFFD4AF37),
                   fontSize: 13,
                   fontWeight:
                       FontWeight.bold,
                   letterSpacing: 3,
                 ),
               ),
-
               const SizedBox(height: 18),
-
               if (result.heroImage != null)
                 ClipRRect(
                   borderRadius:
-                      BorderRadius.circular(14),
+                      BorderRadius.circular(
+                    14,
+                  ),
                   child: Image.network(
                     result.heroImage!,
                     width: double.infinity,
@@ -804,49 +862,47 @@ class _DecisionDialog extends StatelessWidget {
                         (context, error, stack) {
                       return Container(
                         height: 180,
-                        color:
-                            const Color(0xFF0D0D0F),
+                        color: const Color(
+                          0xFF0D0D0F,
+                        ),
                         child: const Center(
                           child: Icon(
                             Icons.restaurant,
                             size: 52,
-                            color:
-                                Color(0xFFD4AF37),
+                            color: Color(
+                              0xFFD4AF37,
+                            ),
                           ),
                         ),
                       );
                     },
                   ),
                 ),
-
               if (result.heroImage != null)
                 const SizedBox(height: 18),
-
               Text(
                 result.venue.name,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 25,
-                  fontWeight: FontWeight.w800,
+                  fontWeight:
+                      FontWeight.w800,
                 ),
               ),
-
               const SizedBox(height: 8),
-
               if (result.category != null &&
                   result.category!.isNotEmpty)
                 Text(
                   result.category!,
-                  textAlign: TextAlign.center,
+                  textAlign:
+                      TextAlign.center,
                   style: const TextStyle(
                     color: Colors.white60,
                     fontSize: 14,
                   ),
                 ),
-
               const SizedBox(height: 14),
-
               Row(
                 mainAxisAlignment:
                     MainAxisAlignment.center,
@@ -857,102 +913,109 @@ class _DecisionDialog extends StatelessWidget {
                         Color(0xFFD4AF37),
                     size: 20,
                   ),
-
                   const SizedBox(width: 5),
-
                   Text(
-                    result.rating.toStringAsFixed(1),
+                    result.rating
+                        .toStringAsFixed(1),
                     style: const TextStyle(
                       color: Colors.white,
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                          FontWeight.bold,
                       fontSize: 16,
                     ),
                   ),
-
                   const SizedBox(width: 18),
-
                   const Icon(
                     Icons.near_me,
                     color:
                         Color(0xFFD4AF37),
                     size: 18,
                   ),
-
                   const SizedBox(width: 5),
-
                   Text(
                     distance,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                          FontWeight.bold,
                     ),
                   ),
                 ],
               ),
-
               const SizedBox(height: 24),
-
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: onLetsGo,
-                  style: FilledButton.styleFrom(
+                  style:
+                      FilledButton.styleFrom(
                     backgroundColor:
-                        const Color(0xFFD4AF37),
+                        const Color(
+                      0xFFD4AF37,
+                    ),
                     foregroundColor:
-                        const Color(0xFF0D0D0F),
+                        const Color(
+                      0xFF0D0D0F,
+                    ),
                     padding:
-                        const EdgeInsets.symmetric(
+                        const EdgeInsets
+                            .symmetric(
                       vertical: 15,
                     ),
                   ),
                   child: const Text(
                     "LET'S FUCKING GO",
                     style: TextStyle(
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                          FontWeight.bold,
                       letterSpacing: 0.5,
                     ),
                   ),
                 ),
               ),
-
               const SizedBox(height: 10),
-
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
-                  onPressed: onRollAgain,
+                  onPressed:
+                      onRollAgain,
                   style:
                       OutlinedButton.styleFrom(
                     foregroundColor:
-                        const Color(0xFFD4AF37),
+                        const Color(
+                      0xFFD4AF37,
+                    ),
                     side: const BorderSide(
-                      color: Color(0xFFD4AF37),
+                      color: Color(
+                        0xFFD4AF37,
+                      ),
                     ),
                     padding:
-                        const EdgeInsets.symmetric(
+                        const EdgeInsets
+                            .symmetric(
                       vertical: 15,
                     ),
                   ),
                   child: const Text(
                     'NOPE. ROLL AGAIN.',
                     style: TextStyle(
-                      fontWeight: FontWeight.bold,
+                      fontWeight:
+                          FontWeight.bold,
                     ),
                   ),
                 ),
               ),
-
               const SizedBox(height: 8),
-
               TextButton(
                 onPressed: () {
-                  Navigator.of(context).pop();
+                  Navigator.of(context)
+                      .pop();
                 },
                 child: const Text(
                   'I HAVE REGRETS',
                   style: TextStyle(
-                    color: Colors.white38,
+                    color:
+                        Colors.white38,
                   ),
                 ),
               ),
@@ -963,4 +1026,3 @@ class _DecisionDialog extends StatelessWidget {
     );
   }
 }
-

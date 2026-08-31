@@ -30,6 +30,7 @@ class _SavedScreenState extends State<SavedScreen> {
     await Future.wait([
       loadSavedCrawls(),
       loadSavedDetourTrips(),
+      loadSavedNearbyResults(),
     ]);
 
     if (!mounted) {
@@ -98,6 +99,7 @@ class _SavedScreenState extends State<SavedScreen> {
     }
 
     await loadSavedCrawls();
+
     if (!mounted) {
       return;
     }
@@ -178,7 +180,7 @@ class _SavedScreenState extends State<SavedScreen> {
               },
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFFD4AF37),
-                foregroundColor: Color(0xFF0D0D0F),
+                foregroundColor: const Color(0xFF0D0D0F),
               ),
               child: const Text(
                 'DELETE',
@@ -488,7 +490,8 @@ class _SavedScreenState extends State<SavedScreen> {
               },
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFFD4AF37),
-                foregroundColor: const Color(0xFF0D0D0F),
+                foregroundColor:
+                    const Color(0xFF0D0D0F),
               ),
               child: const Text(
                 'DELETE',
@@ -628,12 +631,92 @@ class _SavedScreenState extends State<SavedScreen> {
     );
   }
 
+  Future<void> _deleteSavedPlace(
+    NearbyResult result,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1C1C1E),
+          title: const Text(
+            'DELETE PLACE?',
+            style: TextStyle(
+              color: Color(0xFFD4AF37),
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          content: Text(
+            'Delete "${result.venue.name}" from Saved Places?',
+            style: const TextStyle(
+              color: Colors.white70,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text(
+                'CANCEL',
+                style: TextStyle(
+                  color: Colors.white54,
+                ),
+              ),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFD4AF37),
+                foregroundColor:
+                    const Color(0xFF0D0D0F),
+              ),
+              child: const Text(
+                'DELETE',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    await removeSavedNearbyResult(result);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '"${result.venue.name}" deleted.',
+        ),
+      ),
+    );
+  }
+
   Widget _buildSavedPlaces(
     List<NearbyResult> saved,
   ) {
     if (saved.isEmpty) {
       return const Padding(
-        padding: EdgeInsets.fromLTRB(20, 8, 20, 28),
+        padding: EdgeInsets.fromLTRB(
+          20,
+          8,
+          20,
+          28,
+        ),
         child: Column(
           children: [
             Icon(
@@ -667,7 +750,8 @@ class _SavedScreenState extends State<SavedScreen> {
 
     return ListView.separated(
       shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
+      physics:
+          const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(
         20,
         0,
@@ -675,7 +759,7 @@ class _SavedScreenState extends State<SavedScreen> {
         28,
       ),
       itemCount: saved.length,
-      separatorBuilder: (_, __) =>
+      separatorBuilder: (context, index) =>
           const SizedBox(height: 14),
       itemBuilder: (context, index) {
         final result = saved[index];
@@ -688,7 +772,8 @@ class _SavedScreenState extends State<SavedScreen> {
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: const Color(0xFF1C1C1E),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius:
+                  BorderRadius.circular(16),
               border: Border.all(
                 color: const Color(0xFF333337),
               ),
@@ -705,8 +790,9 @@ class _SavedScreenState extends State<SavedScreen> {
                       width: 76,
                       height: 76,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) =>
-                          _savedPlaceholder(),
+                      errorBuilder:
+                          (context, error, stackTrace) =>
+                              _savedPlaceholder(),
                     ),
                   )
                 else
@@ -751,9 +837,23 @@ class _SavedScreenState extends State<SavedScreen> {
                     ],
                   ),
                 ),
-                const Icon(
-                  Icons.chevron_right,
-                  color: Color(0xFFD4AF37),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      onPressed: () =>
+                          _deleteSavedPlace(result),
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.white38,
+                      ),
+                      tooltip: 'Delete',
+                    ),
+                    const Icon(
+                      Icons.chevron_right,
+                      color: Color(0xFFD4AF37),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -765,30 +865,34 @@ class _SavedScreenState extends State<SavedScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final saved = List<NearbyResult>.from(
-      savedNearbyResults,
-    );
+    final saved =
+        List<NearbyResult>.from(
+          savedNearbyResults,
+        );
 
-    final crawls = List<SavedCrawl>.from(
-      savedCrawls,
-    )..sort(
-        (a, b) => a.plannedDate.compareTo(
-          b.plannedDate,
-        ),
-      );
+    final crawls =
+        List<SavedCrawl>.from(savedCrawls)
+          ..sort(
+            (a, b) =>
+                a.plannedDate.compareTo(
+              b.plannedDate,
+            ),
+          );
 
-    final detours = List<DetourTrip>.from(
-      savedDetourTrips,
-    )..sort(
-        (a, b) => b.createdAt.compareTo(
-          a.createdAt,
-        ),
-      );
+    final detours =
+        List<DetourTrip>.from(savedDetourTrips)
+          ..sort(
+            (a, b) =>
+                b.createdAt.compareTo(
+              a.createdAt,
+            ),
+          );
 
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0F),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0D0D0F),
+        backgroundColor:
+            const Color(0xFF0D0D0F),
         elevation: 0,
         title: const Text(
           'SAVED',
@@ -811,7 +915,8 @@ class _SavedScreenState extends State<SavedScreen> {
                   const Color(0xFF1C1C1E),
               onRefresh: _loadCrawls,
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(
+                padding:
+                    const EdgeInsets.fromLTRB(
                   20,
                   12,
                   20,
@@ -822,9 +927,11 @@ class _SavedScreenState extends State<SavedScreen> {
                     const Text(
                       'SAVED DETOURS',
                       style: TextStyle(
-                        color: Color(0xFFD4AF37),
+                        color:
+                            Color(0xFFD4AF37),
                         fontSize: 14,
-                        fontWeight: FontWeight.w900,
+                        fontWeight:
+                            FontWeight.w900,
                         letterSpacing: 1.6,
                       ),
                     ),
@@ -835,7 +942,10 @@ class _SavedScreenState extends State<SavedScreen> {
                             const EdgeInsets.only(
                           bottom: 14,
                         ),
-                        child: _savedDetourCard(detour),
+                        child:
+                            _savedDetourCard(
+                          detour,
+                        ),
                       ),
                     ),
                     if (crawls.isNotEmpty)
@@ -845,9 +955,11 @@ class _SavedScreenState extends State<SavedScreen> {
                     const Text(
                       'SAVED CRAWLS',
                       style: TextStyle(
-                        color: Color(0xFFD4AF37),
+                        color:
+                            Color(0xFFD4AF37),
                         fontSize: 14,
-                        fontWeight: FontWeight.w900,
+                        fontWeight:
+                            FontWeight.w900,
                         letterSpacing: 1.6,
                       ),
                     ),
@@ -858,7 +970,10 @@ class _SavedScreenState extends State<SavedScreen> {
                             const EdgeInsets.only(
                           bottom: 14,
                         ),
-                        child: _savedCrawlCard(crawl),
+                        child:
+                            _savedCrawlCard(
+                          crawl,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 14),
