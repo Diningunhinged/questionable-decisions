@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../models/nearby_result.dart';
+import '../features/crawl/services/saved_store.dart';
 
-class NearbyResultCard extends StatelessWidget {
+class NearbyResultCard extends StatefulWidget {
   final NearbyResult result;
 
   const NearbyResultCard({
@@ -11,13 +12,96 @@ class NearbyResultCard extends StatelessWidget {
   });
 
   @override
+  State<NearbyResultCard> createState() =>
+      _NearbyResultCardState();
+}
+
+class _NearbyResultCardState
+    extends State<NearbyResultCard> {
+  bool _saved = false;
+  bool _saving = false;
+
+  NearbyResult get result => widget.result;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedState();
+  }
+
+  Future<void> _loadSavedState() async {
+    await loadSavedNearbyResults();
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _saved = isSavedNearbyResult(result);
+    });
+  }
+
+  Future<void> _toggleSaved() async {
+    if (_saving) {
+      return;
+    }
+
+    setState(() {
+      _saving = true;
+    });
+
+    try {
+      final saved =
+          await toggleSavedNearbyResult(result);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _saved = saved;
+        _saving = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            saved
+                ? 'Saved to SAVED.'
+                : 'Removed from SAVED.',
+          ),
+          duration:
+              const Duration(seconds: 2),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _saving = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Couldn\'t save this venue.',
+          ),
+        ),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Card(
       color: const Color(0xFF1C1C1E),
       elevation: 0,
       clipBehavior: Clip.antiAlias,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
         children: [
           if (result.heroImage != null)
             SizedBox(
@@ -26,10 +110,12 @@ class NearbyResultCard extends StatelessWidget {
               child: Image.network(
                 result.heroImage!,
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
+                errorBuilder:
+                    (context, error, stackTrace) {
                   return _imagePlaceholder();
                 },
-                loadingBuilder: (context, child, loadingProgress) {
+                loadingBuilder:
+                    (context, child, loadingProgress) {
                   if (loadingProgress == null) {
                     return child;
                   }
@@ -44,9 +130,15 @@ class NearbyResultCard extends StatelessWidget {
             _imagePlaceholder(),
 
           Padding(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+            padding: const EdgeInsets.fromLTRB(
+              18,
+              16,
+              18,
+              18,
+            ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
@@ -56,7 +148,8 @@ class NearbyResultCard extends StatelessWidget {
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 20,
-                          fontWeight: FontWeight.bold,
+                          fontWeight:
+                              FontWeight.bold,
                         ),
                       ),
                     ),
@@ -82,23 +175,26 @@ class NearbyResultCard extends StatelessWidget {
                   children: [
                     const Icon(
                       Icons.star,
-                      color: Color(0xFFD4AF37),
+                      color:
+                          Color(0xFFD4AF37),
                       size: 20,
                     ),
-
                     const SizedBox(width: 5),
-
                     Text(
-                      result.rating.toStringAsFixed(1),
+                      result.rating
+                          .toStringAsFixed(1),
                       style: const TextStyle(
                         color: Colors.white,
-                        fontWeight: FontWeight.bold,
+                        fontWeight:
+                            FontWeight.bold,
                         fontSize: 15,
                       ),
                     ),
 
-                    if (result.venue.cuisine != null &&
-                        result.venue.cuisine!.isNotEmpty) ...[
+                    if (result.venue.cuisine !=
+                            null &&
+                        result.venue.cuisine!
+                            .isNotEmpty) ...[
                       const SizedBox(width: 12),
                       const Text(
                         '•',
@@ -110,9 +206,12 @@ class NearbyResultCard extends StatelessWidget {
                       Expanded(
                         child: Text(
                           result.venue.cuisine!,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white60,
+                          overflow:
+                              TextOverflow.ellipsis,
+                          style:
+                              const TextStyle(
+                            color:
+                                Colors.white60,
                             fontSize: 14,
                           ),
                         ),
@@ -128,15 +227,18 @@ class NearbyResultCard extends StatelessWidget {
                   Row(
                     children: [
                       const Icon(
-                        Icons.location_on_outlined,
+                        Icons
+                            .location_on_outlined,
                         color: Colors.white38,
                         size: 18,
                       ),
                       const SizedBox(width: 5),
                       Text(
                         _locationText(),
-                        style: const TextStyle(
-                          color: Colors.white60,
+                        style:
+                            const TextStyle(
+                          color:
+                              Colors.white60,
                           fontSize: 14,
                         ),
                       ),
@@ -145,29 +247,98 @@ class NearbyResultCard extends StatelessWidget {
 
                 const SizedBox(height: 16),
 
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: () {
-                      // Venue detail screen will be added next.
-                    },
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFFD4AF37),
-                      side: const BorderSide(
-                        color: Color(0xFFD4AF37),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 13,
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          // Venue detail screen
+                          // will be added next.
+                        },
+                        style:
+                            OutlinedButton.styleFrom(
+                          foregroundColor:
+                              const Color(
+                            0xFFD4AF37,
+                          ),
+                          side:
+                              const BorderSide(
+                            color: Color(
+                              0xFFD4AF37,
+                            ),
+                          ),
+                          padding:
+                              const EdgeInsets
+                                  .symmetric(
+                            vertical: 13,
+                          ),
+                        ),
+                        child: const Text(
+                          'VIEW REVIEW',
+                          style: TextStyle(
+                            fontWeight:
+                                FontWeight.bold,
+                            letterSpacing: 1,
+                          ),
+                        ),
                       ),
                     ),
-                    child: const Text(
-                      'VIEW REVIEW',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 1,
+
+                    const SizedBox(width: 10),
+
+                    SizedBox(
+                      width: 52,
+                      height: 48,
+                      child: OutlinedButton(
+                        onPressed:
+                            _saving
+                                ? null
+                                : _toggleSaved,
+                        style:
+                            OutlinedButton.styleFrom(
+                          foregroundColor:
+                              const Color(
+                            0xFFD4AF37,
+                          ),
+                          side:
+                              const BorderSide(
+                            color: Color(
+                              0xFFD4AF37,
+                            ),
+                          ),
+                          padding:
+                              EdgeInsets.zero,
+                          shape:
+                              RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius
+                                    .circular(8),
+                          ),
+                        ),
+                        child: _saving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child:
+                                    CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Color(
+                                    0xFFD4AF37,
+                                  ),
+                                ),
+                              )
+                            : Icon(
+                                _saved
+                                    ? Icons.bookmark
+                                    : Icons
+                                        .bookmark_border,
+                                color: const Color(
+                                  0xFFD4AF37,
+                                ),
+                              ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
               ],
             ),
@@ -229,7 +400,8 @@ class _TypeBadge extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: const Color(0xFFD4AF37),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius:
+            BorderRadius.circular(20),
       ),
       child: Text(
         isDrink ? 'DRINK' : 'VENUE',
