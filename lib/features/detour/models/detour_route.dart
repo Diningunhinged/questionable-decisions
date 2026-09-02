@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Cameron Dow. All rights reserved.
+// Questionable Decisions - Copyright Registration No. 1249281.
+
 class DetourRoute {
   const DetourRoute({
     required this.distanceMeters,
@@ -30,7 +33,7 @@ class DetourRoute {
   /// [2, 0, 1]
   ///
   /// means:
-  /// C → A → B
+  /// C Ã¢â€ â€™ A Ã¢â€ â€™ B
   ///
   /// Empty when no waypoint optimization was requested.
   final List<int> optimizedWaypointIndices;

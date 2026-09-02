@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Cameron Dow. All rights reserved.
+// Questionable Decisions - Copyright Registration No. 1249281.
+
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../models/nearby_result.dart';

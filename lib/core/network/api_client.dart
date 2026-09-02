@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Cameron Dow. All rights reserved.
+// Questionable Decisions - Copyright Registration No. 1249281.
+
 import 'package:http/http.dart' as http;
 
 import 'api_config.dart';

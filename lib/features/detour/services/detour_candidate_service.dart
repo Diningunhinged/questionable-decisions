@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Cameron Dow. All rights reserved.
+// Questionable Decisions - Copyright Registration No. 1249281.
+
 import '../models/detour_route.dart';
 import '../models/detour_venue.dart';
 import '../models/detour_preferences.dart';
@@ -322,7 +325,7 @@ class DetourCandidateService {
       case 'cocktail':
         return 'cocktail_bar';
 
-      case 'café':
+      case 'cafÃƒÂ©':
       case 'cafe':
         return 'cafe';
 
@@ -468,8 +471,8 @@ class DetourCandidateService {
       case 'cocktail bar':
         return 'cocktail_bar';
 
-      case 'café':
-      case 'cafÃ©':
+      case 'cafÃƒÂ©':
+      case 'cafÃƒÆ’Ã‚Â©':
       case 'cafe':
         return 'cafe';
 

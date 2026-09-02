@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Cameron Dow. All rights reserved.
+// Questionable Decisions - Copyright Registration No. 1249281.
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -2206,7 +2209,7 @@ class _DetourScreenState extends State<DetourScreen> {
       'Bar',
       'Cocktail',
       'Distillery',
-      'Café',
+      'CafÃƒÂ©',
     ];
 
     return Wrap(

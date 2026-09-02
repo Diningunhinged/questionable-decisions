@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Cameron Dow. All rights reserved.
+// Questionable Decisions - Copyright Registration No. 1249281.
+
 import 'package:flutter/material.dart';
 
 import '../models/nearby_result.dart';
@@ -197,7 +200,7 @@ class _NearbyResultCardState
                             .isNotEmpty) ...[
                       const SizedBox(width: 12),
                       const Text(
-                        '•',
+                        'Ã¢â‚¬Â¢',
                         style: TextStyle(
                           color: Colors.white38,
                         ),

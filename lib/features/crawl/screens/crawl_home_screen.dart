@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Cameron Dow. All rights reserved.
+// Questionable Decisions - Copyright Registration No. 1249281.
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -348,7 +351,7 @@ class _CrawlHomeScreenState
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'TEST GPS ACTIVE ΓÇö '
+                      'TEST GPS ACTIVE ÃŽâ€œÃƒâ€¡ÃƒÂ¶ '
                       'phone location is being simulated.',
                       style: TextStyle(
                         color:
