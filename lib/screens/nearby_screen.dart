@@ -1,10 +1,10 @@
-// Copyright (C) 2026 Cameron Dow. All rights reserved.
-// Questionable Decisions - Copyright Registration No. 1249281.
-
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../models/nearby_result.dart';
 import '../services/dining_unhinged_api.dart';
@@ -30,6 +30,10 @@ class _NearbyScreenState extends State<NearbyScreen> {
 
   List<NearbyResult> _allResults = [];
   List<NearbyResult> _results = [];
+
+  Position? _currentPosition;
+  GoogleMapController? _mapController;
+  NearbyResult? _selectedMapVenue;
 
   double _radiusKm = 25;
 
@@ -111,7 +115,9 @@ class _NearbyScreenState extends State<NearbyScreen> {
       }
 
       setState(() {
+        _currentPosition = position;
         _allResults = nearbyResults;
+        _selectedMapVenue = null;
         _applyRadiusFilter();
         _loading = false;
       });
@@ -172,8 +178,120 @@ class _NearbyScreenState extends State<NearbyScreen> {
   void _changeRadius(double radius) {
     setState(() {
       _radiusKm = radius;
+      _selectedMapVenue = null;
       _applyRadiusFilter();
     });
+  }
+
+  Set<Marker> _buildNearbyMarkers() {
+    return _results
+        .where((result) {
+          final location = result.venue.location;
+          return location != null && location.isValid;
+        })
+        .map((result) {
+          final location = result.venue.location!;
+          final selected = _selectedMapVenue?.type == result.type &&
+              _selectedMapVenue?.slug == result.slug;
+
+          return Marker(
+            markerId: MarkerId('${result.type}:${result.slug}'),
+            position: LatLng(
+              location.latitude!,
+              location.longitude!,
+            ),
+            icon: BitmapDescriptor.defaultMarkerWithHue(
+              selected
+                  ? BitmapDescriptor.hueRed
+                  : BitmapDescriptor.hueYellow,
+            ),
+            infoWindow: InfoWindow(
+              title: result.title,
+              snippet: _formatDistance(result.distanceKm),
+            ),
+            onTap: () {
+              setState(() {
+                _selectedMapVenue = result;
+              });
+            },
+          );
+        })
+        .toSet();
+  }
+
+  Future<void> _focusMapOnVenue(NearbyResult venue) async {
+    final location = venue.venue.location;
+
+    if (location == null || !location.isValid) {
+      return;
+    }
+
+    setState(() {
+      _selectedMapVenue = venue;
+    });
+
+    final controller = _mapController;
+    if (controller == null) {
+      return;
+    }
+
+    await controller.animateCamera(
+      CameraUpdate.newLatLngZoom(
+        LatLng(
+          location.latitude!,
+          location.longitude!,
+        ),
+        16,
+      ),
+    );
+  }
+
+  Widget _buildNearbyMap() {
+    final position = _currentPosition;
+
+    if (position == null || _results.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      height: 300,
+      margin: const EdgeInsets.only(bottom: 24),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1C1C1E),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: Colors.white12,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: GoogleMap(
+        initialCameraPosition: CameraPosition(
+          target: LatLng(
+            position.latitude,
+            position.longitude,
+          ),
+          zoom: 13.5,
+        ),
+        myLocationEnabled: true,
+        myLocationButtonEnabled: true,
+        zoomControlsEnabled: false,
+        mapToolbarEnabled: false,
+        compassEnabled: true,
+        gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+          Factory<OneSequenceGestureRecognizer>(
+            () => EagerGestureRecognizer(),
+          ),
+        },
+        rotateGesturesEnabled: true,
+        scrollGesturesEnabled: true,
+        tiltGesturesEnabled: false,
+        zoomGesturesEnabled: true,
+        markers: _buildNearbyMarkers(),
+        onMapCreated: (controller) {
+          _mapController = controller;
+        },
+      ),
+    );
   }
 
   String _formatDistance(double? distanceKm) {
@@ -236,6 +354,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
       return;
     }
 
+    _focusMapOnVenue(decision);
     _showDecisionDialog(decision);
   }
 
@@ -557,6 +676,8 @@ class _NearbyScreenState extends State<NearbyScreen> {
                         const SizedBox(height: 20),
                       ],
                     ),
+                  _buildNearbyMap(),
+
                   if (_error != null)
                     Container(
                       width: double.infinity,
