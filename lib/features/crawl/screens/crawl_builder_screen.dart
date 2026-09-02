@@ -40,6 +40,7 @@ class _CrawlBuilderScreenState
 
   List<NearbyResult> _venues = [];
   List<NearbyResult> _manualVenues = [];
+  List<NearbyResult> _manualPool = [];
 
   _CrawlBuildMode _mode =
       _CrawlBuildMode.manual;
@@ -108,15 +109,7 @@ class _CrawlBuilderScreenState
           .where(_isEligibleVenue)
           .toList();
 
-      eligible.sort(
-        (a, b) =>
-            _distanceFromStartingPoint(a)
-                .compareTo(
-          _distanceFromStartingPoint(b),
-        ),
-      );
-
-      final selected = _selectUniqueVenues(
+      final selected = _selectRandomUniqueVenues(
         eligible,
         widget.configuration.stopCount,
       );
@@ -158,25 +151,27 @@ class _CrawlBuilderScreenState
           .where(_isEligibleVenue)
           .toList();
 
-      eligible.sort(
-        (a, b) =>
-            _distanceFromStartingPoint(a)
-                .compareTo(
-          _distanceFromStartingPoint(b),
-        ),
-      );
-
       final unique =
-          _selectAllUniqueVenues(
-        eligible,
-      );
+          _selectAllUniqueVenues(eligible);
 
       if (!mounted) {
         return;
       }
 
       setState(() {
-        _manualVenues = unique;
+        _manualPool = unique;
+
+        // A new manual crawl starts with no stops selected.
+        // When editing an existing crawl, preserve its saved stops.
+        if (widget.editingCrawl == null) {
+          _manualVenues = [];
+        } else {
+          _manualVenues =
+              List<NearbyResult>.from(
+            widget.editingCrawl!.stops,
+          );
+        }
+
         _manualLoading = false;
         _error = null;
       });
@@ -199,11 +194,91 @@ class _CrawlBuilderScreenState
     }
   }
 
-  List<NearbyResult> _selectUniqueVenues(
+  String _manualVenueKey(NearbyResult venue) {
+    final location = venue.venue.location;
+
+    if (location != null && location.isValid) {
+      return '${location.latitude!.toStringAsFixed(5)},'
+          '${location.longitude!.toStringAsFixed(5)}';
+    }
+
+    return '${venue.type}:${venue.slug}';
+  }
+
+  List<NearbyResult> _availableManualVenues() {
+    final selectedKeys = _manualVenues
+        .map(_manualVenueKey)
+        .toSet();
+
+    return _manualPool
+        .where(
+          (venue) =>
+              !selectedKeys.contains(
+            _manualVenueKey(venue),
+          ),
+        )
+        .toList();
+  }
+
+  void _addManualVenueFromMap(
+    NearbyResult venue,
+  ) {
+    final stopCount =
+        widget.configuration.stopCount;
+
+    if (stopCount < 5 &&
+        _manualVenues.length >= stopCount) {
+      return;
+    }
+
+    final key = _manualVenueKey(venue);
+
+    if (_manualVenues.any(
+      (selected) =>
+          _manualVenueKey(selected) == key,
+    )) {
+      return;
+    }
+
+    setState(() {
+      _manualVenues.add(venue);
+    });
+  }
+
+  void _addManualVenue(NearbyResult venue) {
+    final stopCount =
+        widget.configuration.stopCount;
+
+    // 5+ means there is no artificial selection cap.
+    if (stopCount < 5 &&
+        _manualVenues.length >= stopCount) {
+      return;
+    }
+
+    final key = _manualVenueKey(venue);
+
+    if (_manualVenues
+        .any((selected) =>
+            _manualVenueKey(selected) == key)) {
+      return;
+    }
+
+    setState(() {
+      _manualVenues.add(venue);
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _fitMapToManualVenues();
+      }
+    });
+  }
+
+  List<NearbyResult> _selectRandomUniqueVenues(
     List<NearbyResult> eligible,
     int requestedStops,
   ) {
-    final selected = <NearbyResult>[];
+    final unique = <NearbyResult>[];
     final physicalLocations =
         <String>{};
 
@@ -224,16 +299,22 @@ class _CrawlBuilderScreenState
         continue;
       }
 
-      selected.add(result);
-
-      if (selected.length >=
-          requestedStops) {
-        break;
-      }
+      unique.add(result);
     }
 
-    return selected;
+    unique.shuffle();
+
+    if (requestedStops >= 5 ||
+        unique.length <= requestedStops) {
+      return unique;
+    }
+
+    return unique.sublist(
+      0,
+      requestedStops,
+    );
   }
+
 
   List<NearbyResult> _selectAllUniqueVenues(
     List<NearbyResult> eligible,
@@ -585,7 +666,7 @@ class _CrawlBuilderScreenState
 
     final venues = _mode ==
             _CrawlBuildMode.manual
-        ? _manualVenues
+        ? _manualPool
         : _venues;
 
     for (var index = 0;
@@ -600,26 +681,69 @@ class _CrawlBuilderScreenState
         continue;
       }
 
+      final isManual =
+          _mode == _CrawlBuildMode.manual;
+
+      final selected = isManual &&
+          _manualVenues.any(
+            (selectedVenue) =>
+                _manualVenueKey(selectedVenue) ==
+                _manualVenueKey(venue),
+          );
+
       markers.add(
         Marker(
           markerId: MarkerId(
-            'venue_$index',
+            'venue_${venue.type}_${venue.slug}',
           ),
           position: LatLng(
             location.latitude!,
             location.longitude!,
           ),
+          icon: isManual
+              ? BitmapDescriptor.defaultMarkerWithHue(
+                  selected
+                      ? BitmapDescriptor.hueRed
+                      : BitmapDescriptor.hueYellow,
+                )
+              : BitmapDescriptor.defaultMarker,
           infoWindow: InfoWindow(
-            title:
-                '${index + 1}. ${venue.title}',
+            title: isManual
+                ? venue.title
+                : '${index + 1}. ${venue.title}',
             snippet:
                 venue.venue.name,
           ),
+          onTap: isManual
+              ? () => _toggleManualVenueFromMap(
+                    venue,
+                  )
+              : null,
         ),
       );
     }
 
     return markers;
+  }
+
+  void _toggleManualVenueFromMap(
+    NearbyResult venue,
+  ) {
+    final key = _manualVenueKey(venue);
+    final selectedIndex =
+        _manualVenues.indexWhere(
+      (selectedVenue) =>
+          _manualVenueKey(selectedVenue) == key,
+    );
+
+    if (selectedIndex >= 0) {
+      setState(() {
+        _manualVenues.removeAt(selectedIndex);
+      });
+      return;
+    }
+
+    _addManualVenueFromMap(venue);
   }
 
   String _distanceText(
@@ -852,7 +976,7 @@ class _CrawlBuilderScreenState
             : Column(
                 children: [
                   Expanded(
-                    flex: 5,
+                    flex: isManual ? 3 : 5,
                     child:
                         GoogleMap(
                       initialCameraPosition:
@@ -882,7 +1006,7 @@ class _CrawlBuilderScreenState
                     ),
                   ),
                   Expanded(
-                    flex: 5,
+                    flex: isManual ? 7 : 5,
                     child:
                         isManual
                             ? _manualDetails()
@@ -1081,20 +1205,23 @@ class _CrawlBuilderScreenState
   }
 
   Widget _manualDetails() {
+    final available = _availableManualVenues();
+    final stopCount =
+        widget.configuration.stopCount;
+    final selectionCapReached =
+        stopCount < 5 &&
+        _manualVenues.length >= stopCount;
+
     return Container(
-      width:
-          double.infinity,
-      padding:
-          const EdgeInsets.fromLTRB(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(
         20,
         18,
         20,
         20,
       ),
-      decoration:
-          const BoxDecoration(
-        color:
-            Color(0xFF0D0D0F),
+      decoration: const BoxDecoration(
+        color: Color(0xFF0D0D0F),
       ),
       child: Column(
         crossAxisAlignment:
@@ -1102,111 +1229,250 @@ class _CrawlBuilderScreenState
         children: [
           const Text(
             'MANUAL BUILD',
-            style:
-                TextStyle(
-              color:
-                  Color(0xFFD4AF37),
+            style: TextStyle(
+              color: Color(0xFFD4AF37),
               fontSize: 13,
-              fontWeight:
-                  FontWeight.w900,
+              fontWeight: FontWeight.w900,
               letterSpacing: 1,
             ),
           ),
-          const SizedBox(
-            height: 6,
-          ),
+          const SizedBox(height: 6),
           Text(
             '${_manualVenues.length} STOPS SELECTED',
-            style:
-                const TextStyle(
-              color:
-                  Colors.white,
+            style: const TextStyle(
+              color: Colors.white,
               fontSize: 24,
-              fontWeight:
-                  FontWeight.w900,
+              fontWeight: FontWeight.w900,
             ),
           ),
-          const SizedBox(
-            height: 6,
-          ),
+          const SizedBox(height: 6),
           Text(
-            'Choose your stops. '
-            'You need ${widget.configuration.stopCount}.',
-            style:
-                const TextStyle(
-              color:
-                  Colors.white54,
+            stopCount >= 5
+                ? 'Choose your stops from the available pool.'
+                : 'Choose your stops. You need $stopCount.',
+            style: const TextStyle(
+              color: Colors.white54,
               fontSize: 13,
             ),
           ),
-          const SizedBox(
-            height: 14,
-          ),
-          if (_manualVenues.isEmpty)
-            const Expanded(
-              child:
-                  Center(
-                child: Text(
-                  'No eligible venues were found within your selected distance.',
-                  textAlign:
-                      TextAlign.center,
-                  style:
-                      TextStyle(
-                    color:
-                        Colors.white60,
-                    fontSize: 14,
+          const SizedBox(height: 14),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'AVAILABLE VENUES',
+                  style: TextStyle(
+                    color: Color(0xFFD4AF37),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1,
                   ),
                 ),
-              ),
-            )
-          else
-            Expanded(
-              child:
-                  ReorderableListView.builder(
-                itemCount:
-                    _manualVenues.length,
-                buildDefaultDragHandles:
-                    true,
-                onReorderItem: _reorderManualVenues,
-                itemBuilder:
-                    (context, index) {
-                  final venue =
-                      _manualVenues[index];
+                const SizedBox(height: 8),
 
-                  return _manualVenueTile(
-                    venue,
-                    index,
-                  );
-                },
-              ),
+                Expanded(
+                  flex: 3,
+                  child: available.isEmpty
+                      ? Center(
+                          child: Text(
+                            _manualPool.isEmpty
+                                ? 'No eligible venues were found within your selected distance.'
+                                : 'All available venues are selected.',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white60,
+                              fontSize: 14,
+                            ),
+                          ),
+                        )
+                      : ListView.separated(
+                          itemCount: available.length,
+                          separatorBuilder:
+                              (context, index) =>
+                                  const SizedBox(height: 8),
+                          itemBuilder:
+                              (context, index) {
+                            final venue =
+                                available[index];
+
+                            return _availableManualVenueTile(
+                              venue,
+                              disabled:
+                                  selectionCapReached,
+                            );
+                          },
+                        ),
+                ),
+
+                const SizedBox(height: 12),
+
+                const Text(
+                  'SELECTED STOPS',
+                  style: TextStyle(
+                    color: Color(0xFFD4AF37),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1,
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                Expanded(
+                  flex: 2,
+                  child: _manualVenues.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'Select venues above to build your crawl.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white60,
+                              fontSize: 14,
+                            ),
+                          ),
+                        )
+                      : ReorderableListView.builder(
+                          itemCount:
+                              _manualVenues.length,
+                          buildDefaultDragHandles: true,
+                          onReorderItem:
+                              _reorderManualVenues,
+                          itemBuilder:
+                              (context, index) {
+                            final venue =
+                                _manualVenues[index];
+
+                            return _manualVenueTile(
+                              venue,
+                              index,
+                            );
+                          },
+                        ),
+                ),
+              ],
             ),
-          const SizedBox(
-            height: 14,
           ),
+
+          const SizedBox(height: 14),
+
           Row(
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: _manualVenues.length >= widget.configuration.stopCount
-                      ? _saveManualCrawl
-                      : null,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFFD4AF37),
-                    side: const BorderSide(color: Color(0xFFD4AF37)),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  onPressed:
+                      _manualVenues.length >=
+                              stopCount
+                          ? _saveManualCrawl
+                          : null,
+                  style:
+                      OutlinedButton.styleFrom(
+                    foregroundColor:
+                        const Color(0xFFD4AF37),
+                    side: const BorderSide(
+                      color: Color(0xFFD4AF37),
+                    ),
+                    padding:
+                        const EdgeInsets.symmetric(
+                      vertical: 16,
+                    ),
                   ),
-                  child: const Text('SAVE CRAWL', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.7)),
+                  child: const Text(
+                    'SAVE CRAWL',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.7,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: _startButton(
-                  enabled: _manualVenues.length >= widget.configuration.stopCount,
+                  enabled:
+                      _manualVenues.length >=
+                          stopCount,
                   onPressed: _startManualCrawl,
                   label: 'START CRAWL',
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _availableManualVenueTile(
+    NearbyResult venue, {
+    required bool disabled,
+  }) {
+    final distance =
+        _distanceFromStartingPoint(venue);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 10,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1C1C1E),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  venue.title,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  _distanceText(distance),
+                  style: const TextStyle(
+                    color: Colors.white54,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton(
+            onPressed: disabled
+                ? null
+                : () => _addManualVenue(venue),
+            style: OutlinedButton.styleFrom(
+              foregroundColor:
+                  const Color(0xFFD4AF37),
+              side: const BorderSide(
+                color: Color(0xFFD4AF37),
+              ),
+              padding:
+                  const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+              minimumSize: Size.zero,
+            ),
+            child: const Text(
+              'ADD',
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 12,
+              ),
+            ),
           ),
         ],
       ),
