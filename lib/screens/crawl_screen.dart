@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Cameron Dow. All rights reserved.
+// Questionable Decisions - Copyright Registration No. 1249281.
+
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -965,7 +968,7 @@ class _CrawlScreenState
                 'coffee',
               ) ||
               category.contains(
-                'café',
+                'cafÃƒÂ©',
               )) {
             return true;
           }

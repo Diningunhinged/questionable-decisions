@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Cameron Dow. All rights reserved.
+// Questionable Decisions - Copyright Registration No. 1249281.
+
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
@@ -453,7 +456,7 @@ class _CrawlBuilderScreenState
           if (_containsAny(value, [
             'coffee',
             'cafe',
-            'caf├⌐',
+            'cafÃ¢â€Å“Ã¢Å’Â',
           ])) {
             return true;
           }

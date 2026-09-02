@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Cameron Dow. All rights reserved.
+// Questionable Decisions - Copyright Registration No. 1249281.
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -242,7 +245,7 @@ class _SavedScreenState extends State<SavedScreen> {
         ? '${crawl.configuration.walkingDistanceMiles.toStringAsFixed(1)} mi'
         : '${crawl.configuration.walkingDistanceKm.toStringAsFixed(1)} km';
 
-    return '${crawl.stops.length} stops · $distance · '
+    return '${crawl.stops.length} stops Ã‚Â· $distance Ã‚Â· '
         '${crawl.startingPoint.name}';
   }
 
@@ -448,7 +451,7 @@ class _SavedScreenState extends State<SavedScreen> {
       );
     }
 
-    return parts.join(' · ');
+    return parts.join(' Ã‚Â· ');
   }
 
   Future<void> _deleteSavedDetour(
@@ -467,7 +470,7 @@ class _SavedScreenState extends State<SavedScreen> {
             ),
           ),
           content: Text(
-            'Delete "${trip.start.name} → ${trip.destination.name}" from Saved?',
+            'Delete "${trip.start.name} Ã¢â€ â€™ ${trip.destination.name}" from Saved?',
             style: const TextStyle(
               color: Colors.white70,
             ),
@@ -555,7 +558,7 @@ class _SavedScreenState extends State<SavedScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    '${trip.start.name} → ${trip.destination.name}',
+                    '${trip.start.name} Ã¢â€ â€™ ${trip.destination.name}',
                     maxLines: 2,
                     overflow:
                         TextOverflow.ellipsis,
@@ -599,7 +602,7 @@ class _SavedScreenState extends State<SavedScreen> {
               Text(
                 trip.stops
                     .map((stop) => stop.name)
-                    .join(' · '),
+                    .join(' Ã‚Â· '),
                 maxLines: 2,
                 overflow:
                     TextOverflow.ellipsis,

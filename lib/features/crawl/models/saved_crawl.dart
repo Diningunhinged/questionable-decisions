@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Cameron Dow. All rights reserved.
+// Questionable Decisions - Copyright Registration No. 1249281.
+
 import '../../../models/nearby_result.dart';
 import 'crawl_configuration.dart';
 import 'crawl_starting_point.dart';
