@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../features/crawl/models/crawl_configuration.dart';
 import '../models/nearby_result.dart';
+import '../services/crawl_background_location_service.dart';
 import '../services/dining_unhinged_api.dart';
 import '../services/location_service.dart';
 import '../services/notification_service.dart';
@@ -131,6 +132,7 @@ class _CrawlScreenState
   @override
   void dispose() {
     _stopLocationMonitoring();
+    CrawlBackgroundLocationService.stop();
     super.dispose();
   }
 
@@ -307,6 +309,9 @@ class _CrawlScreenState
       );
 
       await _startLocationMonitoring();
+      await CrawlBackgroundLocationService.start(
+        activeStop: _crawlStops[_activeStopIndex],
+      );
     } on LocationServiceException catch (e) {
       if (!mounted) {
         return;
@@ -559,6 +564,7 @@ class _CrawlScreenState
       );
 
       _stopLocationMonitoring();
+      CrawlBackgroundLocationService.stop();
 
       return;
     }
@@ -579,6 +585,10 @@ class _CrawlScreenState
     _showArrivalMessage(
       arrivedName,
       nextStop: nextStop,
+    );
+
+    CrawlBackgroundLocationService.updateActiveStop(
+      nextStop,
     );
 
     if (_currentPosition != null) {
@@ -851,6 +861,7 @@ class _CrawlScreenState
 
   Future<void> _stopCrawl() async {
     await _stopLocationMonitoring();
+    await CrawlBackgroundLocationService.stop();
 
     if (!mounted) {
       return;
