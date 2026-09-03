@@ -1,5 +1,4 @@
-// Copyright (C) 2026 Cameron Dow. All rights reserved.
-// Questionable Decisions - Copyright Registration No. 1249281.
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -21,7 +20,6 @@ class SavedScreen extends StatefulWidget {
 
 class _SavedScreenState extends State<SavedScreen> {
   bool _loadingCrawls = true;
-  bool _loadingDetours = true;
 
   @override
   void initState() {
@@ -42,7 +40,6 @@ class _SavedScreenState extends State<SavedScreen> {
 
     setState(() {
       _loadingCrawls = false;
-      _loadingDetours = false;
     });
   }
 
@@ -112,7 +109,7 @@ class _SavedScreenState extends State<SavedScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          '"${crawl.name}" updated.',
+          '"${_cleanText(crawl.name)}" updated.',
         ),
       ),
     );
@@ -212,10 +209,34 @@ class _SavedScreenState extends State<SavedScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          '"${crawl.name}" deleted.',
+          '"${_cleanText(crawl.name)}" deleted.',
         ),
       ),
     );
+  }
+
+  String _cleanText(String value) {
+    var cleaned = value;
+
+    for (var attempt = 0; attempt < 3; attempt++) {
+      if (!RegExp(r'[\u00C3\u00C2\u00E2\u00F0]').hasMatch(cleaned)) {
+        break;
+      }
+
+      try {
+        final repaired = utf8.decode(latin1.encode(cleaned));
+
+        if (repaired == cleaned) {
+          break;
+        }
+
+        cleaned = repaired;
+      } catch (_) {
+        break;
+      }
+    }
+
+    return cleaned;
   }
 
   String _formatDate(DateTime date) {
@@ -245,8 +266,8 @@ class _SavedScreenState extends State<SavedScreen> {
         ? '${crawl.configuration.walkingDistanceMiles.toStringAsFixed(1)} mi'
         : '${crawl.configuration.walkingDistanceKm.toStringAsFixed(1)} km';
 
-    return '${crawl.stops.length} stops Ã‚Â· $distance Ã‚Â· '
-        '${crawl.startingPoint.name}';
+    return '${crawl.stops.length} stops \u00B7 $distance \u00B7 '
+        '${_cleanText(crawl.startingPoint.name)}';
   }
 
   Widget _savedCrawlCard(SavedCrawl crawl) {
@@ -277,7 +298,7 @@ class _SavedScreenState extends State<SavedScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      crawl.name,
+                      _cleanText(crawl.name),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -451,7 +472,7 @@ class _SavedScreenState extends State<SavedScreen> {
       );
     }
 
-    return parts.join(' Ã‚Â· ');
+    return parts.join(' \u00B7 ');
   }
 
   Future<void> _deleteSavedDetour(
@@ -470,7 +491,7 @@ class _SavedScreenState extends State<SavedScreen> {
             ),
           ),
           content: Text(
-            'Delete "${trip.start.name} Ã¢â€ â€™ ${trip.destination.name}" from Saved?',
+            'Delete "${_cleanText(trip.start.name)} \u2192 ${_cleanText(trip.destination.name)}" from Saved?',
             style: const TextStyle(
               color: Colors.white70,
             ),
@@ -558,7 +579,7 @@ class _SavedScreenState extends State<SavedScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    '${trip.start.name} Ã¢â€ â€™ ${trip.destination.name}',
+                    '${_cleanText(trip.start.name)} \u2192 ${_cleanText(trip.destination.name)}',
                     maxLines: 2,
                     overflow:
                         TextOverflow.ellipsis,
@@ -601,8 +622,8 @@ class _SavedScreenState extends State<SavedScreen> {
               const SizedBox(height: 12),
               Text(
                 trip.stops
-                    .map((stop) => stop.name)
-                    .join(' Ã‚Â· '),
+                    .map((stop) => _cleanText(stop.name))
+                    .join(' \u00B7 '),
                 maxLines: 2,
                 overflow:
                     TextOverflow.ellipsis,
@@ -630,81 +651,6 @@ class _SavedScreenState extends State<SavedScreen> {
         Icons.restaurant,
         color: Color(0xFFD4AF37),
         size: 30,
-      ),
-    );
-  }
-
-  Future<void> _deleteSavedPlace(
-    NearbyResult result,
-  ) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF1C1C1E),
-          title: const Text(
-            'DELETE PLACE?',
-            style: TextStyle(
-              color: Color(0xFFD4AF37),
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          content: Text(
-            'Delete "${result.venue.name}" from Saved Places?',
-            style: const TextStyle(
-              color: Colors.white70,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(false);
-              },
-              child: const Text(
-                'CANCEL',
-                style: TextStyle(
-                  color: Colors.white54,
-                ),
-              ),
-            ),
-            FilledButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop(true);
-              },
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFD4AF37),
-                foregroundColor:
-                    const Color(0xFF0D0D0F),
-              ),
-              child: const Text(
-                'DELETE',
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true) {
-      return;
-    }
-
-    await removeSavedNearbyResult(result);
-
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {});
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '"${result.venue.name}" deleted.',
-        ),
       ),
     );
   }
@@ -807,7 +753,7 @@ class _SavedScreenState extends State<SavedScreen> {
                         CrossAxisAlignment.start,
                     children: [
                       Text(
-                        result.title,
+                        _cleanText(result.title),
                         maxLines: 2,
                         overflow:
                             TextOverflow.ellipsis,
@@ -819,10 +765,12 @@ class _SavedScreenState extends State<SavedScreen> {
                       ),
                       const SizedBox(height: 5),
                       Text(
-                        result.category ??
-                            (result.isDrink
-                                ? 'Drink'
-                                : 'Restaurant'),
+                        _cleanText(
+                          result.category ??
+                              (result.isDrink
+                                  ? 'Drink'
+                                  : 'Restaurant'),
+                        ),
                         style: const TextStyle(
                           color: Color(0xFFD4AF37),
                           fontWeight: FontWeight.w600,
@@ -840,23 +788,9 @@ class _SavedScreenState extends State<SavedScreen> {
                     ],
                   ),
                 ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      onPressed: () =>
-                          _deleteSavedPlace(result),
-                      icon: const Icon(
-                        Icons.delete_outline,
-                        color: Colors.white38,
-                      ),
-                      tooltip: 'Delete',
-                    ),
-                    const Icon(
-                      Icons.chevron_right,
-                      color: Color(0xFFD4AF37),
-                    ),
-                  ],
+                const Icon(
+                  Icons.chevron_right,
+                  color: Color(0xFFD4AF37),
                 ),
               ],
             ),
