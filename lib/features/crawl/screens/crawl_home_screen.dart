@@ -547,7 +547,7 @@ class _CrawlHomeScreenState
           },
         ),
         _optionTile(
-          title: 'See You Tomorrow',
+          title: 'See You Next Tuesday',
           subtitle: '5+ stops',
           selected:
               _configuration.size ==
