@@ -183,19 +183,55 @@ class _NearbyScreenState extends State<NearbyScreen> {
     });
   }
 
+  List<_NearbyVenueGroup> get _venueGroups {
+    final groups = <String, _NearbyVenueGroup>{};
+
+    for (final result in _results) {
+      final key = _venueKey(result);
+      final existing = groups[key];
+
+      if (existing == null) {
+        groups[key] = _NearbyVenueGroup(
+          primary: result,
+          reviews: <NearbyResult>[result],
+        );
+      } else {
+        existing.reviews.add(result);
+      }
+    }
+
+    return groups.values.toList();
+  }
+
+  String _venueKey(NearbyResult result) {
+    final venue = result.venue;
+    final location = venue.location;
+
+    final name = venue.name.trim().toLowerCase();
+    final city = (venue.city ?? '').trim().toLowerCase();
+    final province = (venue.province ?? '').trim().toLowerCase();
+
+    if (location != null && location.isValid) {
+      final latitude = location.latitude!.toStringAsFixed(4);
+      final longitude = location.longitude!.toStringAsFixed(4);
+
+      return '$name|$city|$province|$latitude|$longitude';
+    }
+
+    return '$name|$city|$province';
+  }
+
   Set<Marker> _buildNearbyMarkers() {
-    return _results
-        .where((result) {
-          final location = result.venue.location;
-          return location != null && location.isValid;
-        })
-        .map((result) {
+    return _venueGroups
+        .map((group) {
+          final result = group.primary;
           final location = result.venue.location!;
-          final selected = _selectedMapVenue?.type == result.type &&
-              _selectedMapVenue?.slug == result.slug;
+
+          final selected = _selectedMapVenue != null &&
+              _venueKey(_selectedMapVenue!) == _venueKey(result);
 
           return Marker(
-            markerId: MarkerId('${result.type}:${result.slug}'),
+            markerId: MarkerId('venue:${_venueKey(result)}'),
             position: LatLng(
               location.latitude!,
               location.longitude!,
@@ -206,8 +242,11 @@ class _NearbyScreenState extends State<NearbyScreen> {
                   : BitmapDescriptor.hueYellow,
             ),
             infoWindow: InfoWindow(
-              title: result.title,
-              snippet: _formatDistance(result.distanceKm),
+              title: result.venue.name,
+              snippet:
+                  '${_formatDistance(result.distanceKm)} · '
+                  '${group.reviews.length} '
+                  '${group.reviews.length == 1 ? 'review' : 'reviews'}',
             ),
             onTap: () {
               setState(() {
@@ -306,16 +345,46 @@ class _NearbyScreenState extends State<NearbyScreen> {
     return '${distanceKm.toStringAsFixed(1)} km';
   }
 
+  String? _diceExcludedVenueKey;
+
+  String _diceVenueKey(NearbyResult result) {
+    // The dice exclusion is intentionally based on the venue name only.
+    // Drinks and venue records for the same place can carry different
+    // city/province metadata, so those fields must not split one venue
+    // into separate dice identities.
+    return result.venue.name
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '');
+  }
+
   NearbyResult? _chooseRandomVenue() {
     if (_results.isEmpty) {
       return null;
     }
 
+    // Once a venue has been rolled, remove EVERY result belonging to that
+    // venue from the next roll. This means a venue result followed by a
+    // drink from the same venue is explicitly impossible.
+    final candidates = _diceExcludedVenueKey == null
+        ? List<NearbyResult>.from(_results)
+        : _results
+            .where(
+              (result) =>
+                  _diceVenueKey(result) != _diceExcludedVenueKey,
+            )
+            .toList();
+
+    // Never fall back to the previous venue. If there are no other venues,
+    // there is no valid non-repeating decision to make.
+    if (candidates.isEmpty) {
+      return null;
+    }
+
     final weightedResults = <NearbyResult>[];
 
-    for (final result in _results) {
-      final distance =
-          result.distanceKm ?? _radiusKm;
+    for (final result in candidates) {
+      final distance = result.distanceKm ?? _radiusKm;
 
       final weight = max(
         1,
@@ -328,15 +397,21 @@ class _NearbyScreenState extends State<NearbyScreen> {
     }
 
     if (weightedResults.isEmpty) {
-      return _results[
-          Random().nextInt(_results.length)];
+      return candidates[Random().nextInt(candidates.length)];
     }
 
     return weightedResults[
-        Random().nextInt(weightedResults.length)];
+      Random().nextInt(weightedResults.length)
+    ];
   }
 
-  void _makeTheDecision() {
+  void _makeTheDecision({bool isRollAgain = false}) {
+    // A fresh decision sequence starts with no venue exclusion. The only
+    // time an exclusion is carried into this method is when the user has
+    // explicitly chosen NOPE. ROLL AGAIN.
+    if (!isRollAgain) {
+    }
+
     if (_results.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -371,13 +446,18 @@ class _NearbyScreenState extends State<NearbyScreen> {
             decision.distanceKm,
           ),
           onRollAgain: () {
+            // Only exclude the current venue when the user explicitly
+            // chooses to roll again. Leaving the dialog or accepting the
+            // decision never carries an exclusion into a future decision.
+            _diceExcludedVenueKey = _diceVenueKey(decision);
+
             Navigator.of(dialogContext).pop();
 
             Future.delayed(
               const Duration(milliseconds: 150),
               () {
                 if (mounted) {
-                  _makeTheDecision();
+                  _makeTheDecision(isRollAgain: true);
                 }
               },
             );
@@ -386,7 +466,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
             try {
               await saveNearbyResult(decision);
 
-              if (!mounted) {
+              if (!dialogContext.mounted) {
                 return;
               }
 
@@ -414,6 +494,102 @@ class _NearbyScreenState extends State<NearbyScreen> {
               );
             }
           },
+        );
+      },
+    );
+  }
+
+  Widget _buildNearbyVenueGroup(_NearbyVenueGroup group) {
+    final venue = group.primary.venue;
+    final city = venue.city?.trim() ?? '';
+    final province = venue.province?.trim() ?? '';
+    final locationText = [
+      if (city.isNotEmpty) city,
+      if (province.isNotEmpty) province,
+    ].join(', ');
+
+    return _NearbyVenueCard(
+      result: group.primary,
+      reviewCount: group.reviews.length,
+      locationText: locationText,
+      onTap: () => _showVenueReviews(group),
+    );
+  }
+
+  void _showVenueReviews(_NearbyVenueGroup group) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: const Color(0xFF0D0D0F),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxHeight: 680,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          group.primary.venue.name,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 21,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () {
+                          Navigator.of(dialogContext).pop();
+                        },
+                        icon: const Icon(
+                          Icons.close,
+                          color: Colors.white60,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    group.reviews.length == 1
+                        ? 'DINING UNHINGED REVIEW'
+                        : 'DINING UNHINGED REVIEWS',
+                    style: const TextStyle(
+                      color: Color(0xFFD4AF37),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.3,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          for (final review in group.reviews)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: NearbyResultCard(
+                                result: review,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         );
       },
     );
@@ -762,7 +938,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                       child: Row(
                         children: [
                           Text(
-                            '${_results.length} nearby',
+                            '${_venueGroups.length} nearby',
                             style:
                                 const TextStyle(
                               color:
@@ -804,68 +980,21 @@ class _NearbyScreenState extends State<NearbyScreen> {
                   delegate:
                       SliverChildBuilderDelegate(
                     (context, index) {
-                      final result =
-                          _results[index];
+                      final group =
+                          _venueGroups[index];
 
                       return Padding(
                         padding:
                             const EdgeInsets.only(
-                          bottom: 18,
+                          bottom: 24,
                         ),
-                        child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
-                          children: [
-                            NearbyResultCard(
-                              result: result,
-                            ),
-                            if (result.distanceKm !=
-                                null)
-                              Padding(
-                                padding:
-                                    const EdgeInsets
-                                        .only(
-                                  left: 8,
-                                  top: 6,
-                                ),
-                                child: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons
-                                          .near_me_outlined,
-                                      size: 15,
-                                      color: Color(
-                                        0xFFD4AF37,
-                                      ),
-                                    ),
-                                    const SizedBox(
-                                      width: 5,
-                                    ),
-                                    Text(
-                                      _formatDistance(
-                                        result
-                                            .distanceKm,
-                                      ),
-                                      style:
-                                          const TextStyle(
-                                        color: Colors
-                                            .white54,
-                                        fontSize: 13,
-                                        fontWeight:
-                                            FontWeight
-                                                .w600,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                          ],
+                        child: _buildNearbyVenueGroup(
+                          group,
                         ),
                       );
                     },
                     childCount:
-                        _results.length,
+                        _venueGroups.length,
                   ),
                 ),
               ),
@@ -921,6 +1050,186 @@ class _NearbyScreenState extends State<NearbyScreen> {
         ),
       ),
     );
+  }
+}
+
+class _NearbyVenueGroup {
+  final NearbyResult primary;
+  final List<NearbyResult> reviews;
+
+  _NearbyVenueGroup({
+    required this.primary,
+    required this.reviews,
+  });
+}
+
+class _NearbyVenueCard extends StatelessWidget {
+  final NearbyResult result;
+  final int reviewCount;
+  final String locationText;
+  final VoidCallback onTap;
+
+  const _NearbyVenueCard({
+    required this.result,
+    required this.reviewCount,
+    required this.locationText,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl = result.heroImage;
+    final category = result.category?.trim() ?? '';
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: const Color(0xFF1C1C1E),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.white12,
+            ),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (imageUrl != null && imageUrl.isNotEmpty)
+            SizedBox(
+              width: double.infinity,
+              height: 180,
+              child: Image.network(
+                imageUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return _fallbackImage();
+                },
+              ),
+            )
+          else
+            _fallbackImage(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              16,
+              14,
+              16,
+              16,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  result.venue.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                if (category.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    category,
+                    style: const TextStyle(
+                      color: Colors.white60,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+                if (locationText.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    locationText,
+                    style: const TextStyle(
+                      color: Colors.white38,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.near_me_outlined,
+                      size: 16,
+                      color: Color(0xFFD4AF37),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      _formatVenueDistance(result.distanceKm),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    const Icon(
+                      Icons.rate_review_outlined,
+                      size: 16,
+                      color: Color(0xFFD4AF37),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      '$reviewCount '
+                      '${reviewCount == 1 ? 'review' : 'reviews'}',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const Spacer(),
+                    const Icon(
+                      Icons.chevron_right,
+                      color: Color(0xFFD4AF37),
+                      size: 22,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+      ),
+    );
+  }
+
+  Widget _fallbackImage() {
+    return Container(
+      width: double.infinity,
+      height: 180,
+      color: const Color(0xFF0D0D0F),
+      child: const Center(
+        child: Icon(
+          Icons.restaurant,
+          size: 52,
+          color: Color(0xFFD4AF37),
+        ),
+      ),
+    );
+  }
+
+  String _formatVenueDistance(double? distanceKm) {
+    if (distanceKm == null) {
+      return '';
+    }
+
+    if (distanceKm < 1) {
+      return '${(distanceKm * 1000).round()} m';
+    }
+
+    return '${distanceKm.toStringAsFixed(1)} km';
   }
 }
 

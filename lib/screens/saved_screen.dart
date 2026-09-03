@@ -491,7 +491,7 @@ class _SavedScreenState extends State<SavedScreen> {
             ),
           ),
           content: Text(
-            'Delete "${_cleanText(trip.start.name)} \u2192 ${_cleanText(trip.destination.name)}" from Saved?',
+            'Delete "${_cleanText(trip.start.name)} → ${_cleanText(trip.destination.name)}" from Saved?',
             style: const TextStyle(
               color: Colors.white70,
             ),
@@ -655,6 +655,24 @@ class _SavedScreenState extends State<SavedScreen> {
     );
   }
 
+  Future<void> _deleteSavedNearbyResult(
+    NearbyResult result,
+  ) async {
+    await removeSavedNearbyResult(result);
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Removed from SAVED.'),
+      ),
+    );
+  }
+
   Widget _buildSavedPlaces(
     List<NearbyResult> saved,
   ) {
@@ -788,9 +806,14 @@ class _SavedScreenState extends State<SavedScreen> {
                     ],
                   ),
                 ),
-                const Icon(
-                  Icons.chevron_right,
-                  color: Color(0xFFD4AF37),
+                IconButton(
+                  tooltip: 'Remove from Saved',
+                  onPressed: () =>
+                      _deleteSavedNearbyResult(result),
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.white54,
+                  ),
                 ),
               ],
             ),
