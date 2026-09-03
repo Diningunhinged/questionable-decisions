@@ -4,15 +4,13 @@
 
 import 'package:flutter/material.dart';
 
-import 'tutorial_about_dining_unhinged.dart';
-import 'tutorial_location_privacy.dart';
-import 'tutorial_ratings.dart';
-import 'tutorial_report_issue.dart';
-import 'tutorial_suggest_venue.dart';
-import 'tutorials_screen.dart';
+import 'tutorial_crawl.dart';
+import 'tutorial_detour.dart';
+import 'tutorial_nearby.dart';
+import 'tutorial_saved.dart';
 
-class HelpScreen extends StatelessWidget {
-  const HelpScreen({super.key});
+class TutorialsScreen extends StatelessWidget {
+  const TutorialsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -23,7 +21,7 @@ class HelpScreen extends StatelessWidget {
         foregroundColor: Colors.white,
         elevation: 0,
         title: const Text(
-          'HELP',
+          'TUTORIALS',
           style: TextStyle(
             fontWeight: FontWeight.w900,
             letterSpacing: 1.5,
@@ -32,12 +30,12 @@ class HelpScreen extends StatelessWidget {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'NEED A HAND?',
+                'QUESTIONABLE DECISIONS 101',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 26,
@@ -47,24 +45,23 @@ class HelpScreen extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Everything you need to understand the questionable decisions.',
+                'Learn how this whole thing works.',
                 style: TextStyle(
                   color: Color(0xFFA8A8A8),
                   fontSize: 16,
-                  height: 1.4,
                 ),
               ),
               const SizedBox(height: 28),
 
-              _HelpCard(
-                title: 'TUTORIALS',
+              _TutorialCard(
+                title: 'NEARBY',
                 description:
-                    'Learn how Nearby, Crawl, Detour, and Saved Decisions work.',
-                icon: Icons.menu_book_outlined,
+                    'Find questionable decisions around you and let us make one for you.',
+                icon: Icons.location_on_outlined,
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (_) => const TutorialsScreen(),
+                      builder: (_) => const TutorialNearbyScreen(),
                     ),
                   );
                 },
@@ -72,15 +69,15 @@ class HelpScreen extends StatelessWidget {
 
               const SizedBox(height: 14),
 
-              _HelpCard(
-                title: 'UNDERSTANDING RATINGS',
+              _TutorialCard(
+                title: 'CRAWL',
                 description:
-                    'Learn how Dining Unhinged ratings and the scoring system work.',
-                icon: Icons.star_border,
+                    'Build a crawl, choose your stops, and work your way through them.',
+                icon: Icons.route_outlined,
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (_) => const TutorialRatingsScreen(),
+                      builder: (_) => const TutorialCrawlScreen(),
                     ),
                   );
                 },
@@ -88,15 +85,15 @@ class HelpScreen extends StatelessWidget {
 
               const SizedBox(height: 14),
 
-              _HelpCard(
-                title: 'LOCATION & PRIVACY',
+              _TutorialCard(
+                title: 'DETOUR',
                 description:
-                    'Understand why location is used and how you control permissions.',
-                icon: Icons.privacy_tip_outlined,
+                    'Plan a road trip and discover Dining Unhinged stops along the way.',
+                icon: Icons.alt_route,
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (_) => const TutorialLocationPrivacyScreen(),
+                      builder: (_) => const TutorialDetourScreen(),
                     ),
                   );
                 },
@@ -104,48 +101,15 @@ class HelpScreen extends StatelessWidget {
 
               const SizedBox(height: 14),
 
-              _HelpCard(
-                title: 'REPORT AN ISSUE',
+              _TutorialCard(
+                title: 'SAVED DECISIONS',
                 description:
-                    'Found something that is not working correctly? Learn how to report it.',
-                icon: Icons.bug_report_outlined,
+                    'Learn how to save, remove, review, and use your questionable decisions.',
+                icon: Icons.bookmark_border,
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (_) => const TutorialReportIssueScreen(),
-                    ),
-                  );
-                },
-              ),
-
-              const SizedBox(height: 14),
-
-              _HelpCard(
-                title: 'SUGGEST A VENUE',
-                description:
-                    'Know somewhere that should be on the radar? Learn how to suggest it.',
-                icon: Icons.add_business_outlined,
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const TutorialSuggestVenueScreen(),
-                    ),
-                  );
-                },
-              ),
-
-              const SizedBox(height: 14),
-
-              _HelpCard(
-                title: 'ABOUT DINING UNHINGED',
-                description:
-                    'Learn about Dining Unhinged and how it connects to Questionable Decisions.',
-                icon: Icons.restaurant_outlined,
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) =>
-                          const TutorialAboutDiningUnhingedScreen(),
+                      builder: (_) => const TutorialSavedScreen(),
                     ),
                   );
                 },
@@ -158,8 +122,8 @@ class HelpScreen extends StatelessWidget {
   }
 }
 
-class _HelpCard extends StatelessWidget {
-  const _HelpCard({
+class _TutorialCard extends StatelessWidget {
+  const _TutorialCard({
     required this.title,
     required this.description,
     required this.icon,
