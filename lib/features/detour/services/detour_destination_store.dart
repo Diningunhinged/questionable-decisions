@@ -61,7 +61,7 @@ void _loadList(
             .where(
               (destination) => destination.isValid,
             ),
-        );
+      );
     }
   } catch (_) {
     destinationList.clear();
@@ -143,6 +143,14 @@ Future<void> recordRecentDetourDestination(
   }
 
   addRecentDetourDestination(destination);
+
+  await _persistDestinations();
+}
+
+Future<void> clearRecentDetourDestinations() async {
+  await loadDetourDestinations();
+
+  recentDetourDestinations.clear();
 
   await _persistDestinations();
 }

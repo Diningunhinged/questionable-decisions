@@ -1,15 +1,18 @@
 // Copyright (C) 2026 Cameron Dow. All rights reserved.
 // Questionable Decisions - Copyright Registration No. 1249281.
 
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:http/http.dart' as http;
 
 import '../../../core/network/api_client.dart';
 import '../../crawl/models/crawl_location_search_result.dart';
-import '../../crawl/services/crawl_location_search_service.dart';
-import '../../crawl/services/nominatim_location_search_provider.dart';
 import '../models/detour_endpoint.dart';
 import '../models/detour_route.dart';
 import '../models/detour_venue.dart';
@@ -24,7 +27,9 @@ import '../services/detour_trip_store.dart';
 import '../services/dining_unhinged_review_service.dart';
 import '../services/google_places_provider.dart';
 import '../services/google_routes_provider.dart';
+import '../services/detour_location_tracking_service.dart';
 import '../../../services/location_service.dart';
+import '../../../services/notification_service.dart';
 
 class _AddStopSelection {
   const _AddStopSelection.review(this.review)
@@ -47,7 +52,9 @@ class DetourScreen extends StatefulWidget {
 }
 
 class _DetourScreenState extends State<DetourScreen> {
-  late final CrawlLocationSearchService _searchService;
+  final http.Client _destinationSearchClient = http.Client();
+  Timer? _destinationSearchDebounce;
+  int _destinationSearchRequest = 0;
 
   final TextEditingController _destinationController =
       TextEditingController();
@@ -82,24 +89,248 @@ class _DetourScreenState extends State<DetourScreen> {
   String? _currentTripId;
   DateTime? _currentTripCreatedAt;
 
+  static const double _encounterDistanceMeters = 500.0;
+  static const double _arrivalDistanceMeters = 50.0;
+
+  bool _detourActive = false;
+  Position? _detourPosition;
+  double? _distanceToNextStopMeters;
+  int _activeStopIndex = 0;
+  bool _detourProximityNotificationSent = false;
+  bool _detourCompleted = false;
+
   @override
   void initState() {
     super.initState();
-
-    _searchService = CrawlLocationSearchService(
-      provider:
-          const NominatimLocationSearchProvider(),
-    );
 
     _loadDestinations();
   }
 
   @override
   void dispose() {
+    DetourLocationTrackingService.stop();
+    _destinationSearchDebounce?.cancel();
+    _destinationSearchClient.close();
     _detourMapController?.dispose();
     _destinationController.dispose();
     _destinationFocusNode.dispose();
     super.dispose();
+  }
+
+  Future<void> _startDetour() async {
+    final route = _route;
+    final destination = _destination;
+
+    if (route == null ||
+        destination == null ||
+        !route.isValid ||
+        !destination.isValid) {
+      _showMessage(
+        'Calculate a valid detour before starting.',
+      );
+      return;
+    }
+
+    if (_detourActive) {
+      return;
+    }
+
+    try {
+      setState(() {
+        _detourActive = true;
+        _detourPosition = null;
+        _distanceToNextStopMeters = null;
+        _activeStopIndex = 0;
+        _detourProximityNotificationSent = false;
+        _detourCompleted = false;
+      });
+
+      await DetourLocationTrackingService.start(
+        onPosition: _handleDetourPosition,
+        onError: (error) {
+          if (!mounted) {
+            return;
+          }
+
+          _showMessage(
+            'Detour location tracking error: $error',
+          );
+        },
+      );
+
+      if (!mounted) {
+        await DetourLocationTrackingService.stop();
+        return;
+      }
+
+      _showMessage(
+        'Detour started. GPS tracking is active.',
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      await DetourLocationTrackingService.stop();
+
+      setState(() {
+        _detourActive = false;
+        _detourPosition = null;
+        _distanceToNextStopMeters = null;
+        _activeStopIndex = 0;
+        _detourProximityNotificationSent = false;
+      });
+
+      _showMessage(
+        'Could not start Detour tracking: $error',
+      );
+    }
+  }
+
+  Future<void> _stopDetour() async {
+    await DetourLocationTrackingService.stop();
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _detourActive = false;
+      _detourPosition = null;
+      _distanceToNextStopMeters = null;
+      _activeStopIndex = 0;
+      _detourProximityNotificationSent = false;
+      _detourCompleted = false;
+    });
+
+    _showMessage(
+      'Detour tracking stopped.',
+    );
+  }
+
+  void _handleDetourPosition(Position position) {
+    if (!_detourActive) {
+      return;
+    }
+
+    final target = _nextDetourTarget;
+
+    if (target == null) {
+      debugPrint(
+        'DETOUR LOCATION: Received position but no active target.',
+      );
+      return;
+    }
+
+    debugPrint(
+      'DETOUR LOCATION HANDLER: '
+      '${position.latitude}, ${position.longitude}',
+    );
+
+    final distanceMeters = Geolocator.distanceBetween(
+      position.latitude,
+      position.longitude,
+      target.latitude,
+      target.longitude,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _detourPosition = position;
+      _distanceToNextStopMeters = distanceMeters;
+    });
+
+    if (!_detourProximityNotificationSent &&
+        distanceMeters <= _encounterDistanceMeters) {
+      _detourProximityNotificationSent = true;
+
+      debugPrint(
+        'DETOUR PROXIMITY: ${target.name} within '
+        '$_encounterDistanceMeters m',
+      );
+
+      NotificationService.showDetourEncounter(
+        title: target.name,
+        distanceMeters: distanceMeters,
+      );
+    }
+
+    if (distanceMeters <= _arrivalDistanceMeters) {
+      _handleDetourArrival();
+    }
+  }
+
+  Future<void> _handleDetourArrival() async {
+    if (!_detourActive) {
+      return;
+    }
+
+    if (_activeStopIndex < _optimizedStops.length) {
+      final stop = _optimizedStops[_activeStopIndex];
+      final stopNumber = _activeStopIndex + 1;
+
+      setState(() {
+        _activeStopIndex += 1;
+        _distanceToNextStopMeters = null;
+        _detourProximityNotificationSent = false;
+      });
+
+      _showMessage(
+        'ARRIVED AT STOP $stopNumber: ${stop.name}',
+      );
+      return;
+    }
+
+    _detourActive = false;
+    await DetourLocationTrackingService.stop();
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _detourCompleted = true;
+      _distanceToNextStopMeters = null;
+      _detourProximityNotificationSent = false;
+    });
+
+    _showMessage(
+      'DETOUR COMPLETE. You made it.',
+    );
+  }
+
+  DetourEndpoint? get _nextDetourTarget {
+    if (_activeStopIndex < _optimizedStops.length) {
+      final stop = _optimizedStops[_activeStopIndex];
+
+      return DetourEndpoint(
+        name: stop.name,
+        address: stop.address,
+        latitude: stop.latitude,
+        longitude: stop.longitude,
+      );
+    }
+
+    return _destination;
+  }
+
+  String get _nextDetourTargetLabel {
+    if (_activeStopIndex < _optimizedStops.length) {
+      return 'STOP ${_activeStopIndex + 1}';
+    }
+
+    return 'DESTINATION';
+  }
+
+  String _formatTrackingDistance(double meters) {
+    if (meters < 1000) {
+      return '${meters.round()} m';
+    }
+
+    return '${(meters / 1000).toStringAsFixed(1)} km';
   }
 
   Future<void> _loadDestinations() async {
@@ -177,11 +408,114 @@ class _DetourScreenState extends State<DetourScreen> {
     });
   }
 
+  Future<List<CrawlLocationSearchResult>> _searchDestinationPlaces(
+    String query,
+  ) async {
+    final apiKey = const String.fromEnvironment(
+      'GOOGLE_PLACES_API_KEY',
+    );
+
+    if (apiKey.trim().isEmpty) {
+      throw const _DestinationSearchException(
+        'Google Places API key is not configured.',
+      );
+    }
+
+    final requestBody = <String, dynamic>{
+      'textQuery': query,
+      'pageSize': 8,
+      'regionCode': 'CA',
+    };
+
+    final startingPoint = _startingPoint;
+    if (startingPoint != null && startingPoint.isValid) {
+      requestBody['locationBias'] = <String, dynamic>{
+        'circle': <String, dynamic>{
+          'center': <String, dynamic>{
+            'latitude': startingPoint.latitude,
+            'longitude': startingPoint.longitude,
+          },
+          'radius': 50000.0,
+        },
+      };
+    }
+
+    final response = await _destinationSearchClient
+        .post(
+          Uri.parse(
+            'https://places.googleapis.com/v1/places:searchText',
+          ),
+          headers: <String, String>{
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': apiKey,
+            'X-Goog-FieldMask':
+                'places.displayName,places.formattedAddress,places.location',
+          },
+          body: jsonEncode(requestBody),
+        )
+        .timeout(const Duration(seconds: 15));
+
+    if (response.statusCode != 200) {
+      debugPrint(
+        'DETOUR DESTINATION SEARCH FAILED: '
+        '${response.statusCode} ${response.body}',
+      );
+      throw const _DestinationSearchException(
+        'Google Places search failed.',
+      );
+    }
+
+    final decoded = jsonDecode(response.body);
+    final places = decoded is Map ? decoded['places'] : null;
+    final results = <CrawlLocationSearchResult>[];
+
+    if (places is List) {
+      for (final place in places) {
+        if (place is! Map) {
+          continue;
+        }
+
+        final displayName = place['displayName'];
+        final location = place['location'];
+        final name = displayName is Map
+            ? displayName['text']?.toString()
+            : null;
+        final address = place['formattedAddress']?.toString();
+        final latitude = location is Map
+            ? (location['latitude'] as num?)?.toDouble()
+            : null;
+        final longitude = location is Map
+            ? (location['longitude'] as num?)?.toDouble()
+            : null;
+
+        if (name == null ||
+            name.trim().isEmpty ||
+            latitude == null ||
+            longitude == null) {
+          continue;
+        }
+
+        results.add(
+          CrawlLocationSearchResult(
+            name: name,
+            address: address,
+            latitude: latitude,
+            longitude: longitude,
+          ),
+        );
+      }
+    }
+
+    return results;
+  }
+
   Future<void> _searchDestination(
     String query,
   ) async {
-    final normalizedQuery =
-        query.trim();
+    final normalizedQuery = query.trim();
+    final requestId = ++_destinationSearchRequest;
+
+    _destinationSearchDebounce?.cancel();
 
     if (normalizedQuery.isEmpty) {
       setState(() {
@@ -196,47 +530,158 @@ class _DetourScreenState extends State<DetourScreen> {
       _searching = true;
     });
 
-    try {
-      final results =
-          await _searchService.search(
-        normalizedQuery,
-      );
+    _destinationSearchDebounce = Timer(
+      const Duration(milliseconds: 450),
+      () async {
+        try {
+          final apiKey = const String.fromEnvironment(
+            'GOOGLE_PLACES_API_KEY',
+          );
 
-      if (!mounted) {
-        return;
-      }
+          if (apiKey.trim().isEmpty) {
+            throw const _DestinationSearchException(
+              'Google Places API key is not configured.',
+            );
+          }
 
-      setState(() {
-        _searchResults = results;
-      });
-    } catch (_) {
-      if (!mounted) {
-        return;
-      }
+          final requestBody = <String, dynamic>{
+            'textQuery': normalizedQuery,
+            'pageSize': 8,
+            'regionCode': 'CA',
+          };
 
-      setState(() {
-        _searchResults = [];
-      });
+          final startingPoint = _startingPoint;
+          if (startingPoint != null && startingPoint.isValid) {
+            requestBody['locationBias'] = <String, dynamic>{
+              'circle': <String, dynamic>{
+                'center': <String, dynamic>{
+                  'latitude': startingPoint.latitude,
+                  'longitude': startingPoint.longitude,
+                },
+                'radius': 50000.0,
+              },
+            };
+          }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Could not search for that destination.',
-          ),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _searching = false;
-        });
-      }
-    }
+          final response = await _destinationSearchClient
+              .post(
+                Uri.parse(
+                  'https://places.googleapis.com/v1/places:searchText',
+                ),
+                headers: <String, String>{
+                  'Content-Type': 'application/json',
+                  'X-Goog-Api-Key': apiKey,
+                  'X-Goog-FieldMask':
+                      'places.displayName,places.formattedAddress,places.location',
+                },
+                body: jsonEncode(requestBody),
+              )
+              .timeout(const Duration(seconds: 15));
+
+          if (response.statusCode != 200) {
+            debugPrint(
+              'DETOUR DESTINATION SEARCH FAILED: '
+              '${response.statusCode} ${response.body}',
+            );
+            throw const _DestinationSearchException(
+              'Google Places search failed.',
+            );
+          }
+
+          final decoded = jsonDecode(response.body);
+          final places = decoded is Map
+              ? decoded['places']
+              : null;
+
+          final results = <CrawlLocationSearchResult>[];
+
+          if (places is List) {
+            for (final place in places) {
+              if (place is! Map) {
+                continue;
+              }
+
+              final displayName = place['displayName'];
+              final location = place['location'];
+
+              final name = displayName is Map
+                  ? displayName['text']?.toString()
+                  : null;
+              final address =
+                  place['formattedAddress']?.toString();
+              final latitude = location is Map
+                  ? (location['latitude'] as num?)?.toDouble()
+                  : null;
+              final longitude = location is Map
+                  ? (location['longitude'] as num?)?.toDouble()
+                  : null;
+
+              if (name == null ||
+                  name.trim().isEmpty ||
+                  latitude == null ||
+                  longitude == null) {
+                continue;
+              }
+
+              results.add(
+                CrawlLocationSearchResult(
+                  name: name,
+                  address: address,
+                  latitude: latitude,
+                  longitude: longitude,
+                ),
+              );
+            }
+          }
+
+          if (!mounted ||
+              requestId != _destinationSearchRequest ||
+              _destinationController.text.trim() !=
+                  normalizedQuery) {
+            return;
+          }
+
+          setState(() {
+            _searchResults = results;
+          });
+        } catch (error) {
+          if (!mounted ||
+              requestId != _destinationSearchRequest) {
+            return;
+          }
+
+          debugPrint(
+            'DETOUR DESTINATION SEARCH ERROR: $error',
+          );
+
+          setState(() {
+            _searchResults = [];
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Could not search for that destination.',
+              ),
+            ),
+          );
+        } finally {
+          if (mounted &&
+              requestId == _destinationSearchRequest) {
+            setState(() {
+              _searching = false;
+            });
+          }
+        }
+      },
+    );
   }
 
   Future<void> _selectSearchResult(
     CrawlLocationSearchResult result,
   ) async {
+    ++_destinationSearchRequest;
+    _destinationSearchDebounce?.cancel();
     final destination =
         DetourEndpoint(
       name: result.name,
@@ -268,6 +713,8 @@ class _DetourScreenState extends State<DetourScreen> {
   Future<void> _selectDestination(
     DetourEndpoint destination,
   ) async {
+    ++_destinationSearchRequest;
+    _destinationSearchDebounce?.cancel();
     setState(() {
       _destination = destination;
       _destinationController.text =
@@ -311,6 +758,9 @@ class _DetourScreenState extends State<DetourScreen> {
   }
 
   void _clearDestination() {
+    ++_destinationSearchRequest;
+    _destinationSearchDebounce?.cancel();
+
     setState(() {
       _destination = null;
       _destinationController.clear();
@@ -635,7 +1085,7 @@ class _DetourScreenState extends State<DetourScreen> {
 
                 try {
                   final results =
-                      await _searchService.search(query);
+                      await _searchDestinationPlaces(query);
 
                   if (!dialogContext.mounted) {
                     return;
@@ -1332,6 +1782,8 @@ class _DetourScreenState extends State<DetourScreen> {
               _buildDetourStops(),
               const SizedBox(height: 18),
               _buildDetourSaveActions(),
+              const SizedBox(height: 18),
+              _buildDetourTrackingActions(),
             ],
             const SizedBox(height: 22),
             _buildPlanButton(),
@@ -1742,6 +2194,7 @@ class _DetourScreenState extends State<DetourScreen> {
             title: 'RECENT DESTINATIONS',
             destinations:
                 recentDetourDestinations,
+            showClearRecent: true,
           ),
         if (hasRecent && hasSaved)
           const SizedBox(height: 14),
@@ -1759,9 +2212,33 @@ class _DetourScreenState extends State<DetourScreen> {
     required String title,
     required List<DetourEndpoint>
         destinations,
+    bool showClearRecent = false,
   }) {
     return _buildSectionCard(
       title: title,
+      trailing: showClearRecent
+          ? TextButton(
+              onPressed: _clearRecentDestinations,
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white54,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 4,
+                ),
+                minimumSize: Size.zero,
+                tapTargetSize:
+                    MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                'CLEAR RECENT',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.7,
+                ),
+              ),
+            )
+          : null,
       child: Column(
         children: [
           for (var index = 0;
@@ -1781,6 +2258,16 @@ class _DetourScreenState extends State<DetourScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _clearRecentDestinations() async {
+    await clearRecentDetourDestinations();
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
   }
 
   Widget _buildDestinationTile(
@@ -3001,6 +3488,96 @@ class _DetourScreenState extends State<DetourScreen> {
         '$remainingMinutes min';
   }
 
+  Widget _buildDetourTrackingActions() {
+    return _buildSectionCard(
+      title: _detourCompleted
+          ? 'DETOUR COMPLETE'
+          : _detourActive
+              ? 'DETOUR ACTIVE'
+              : 'START THIS DETOUR',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_detourActive) ...[
+            Row(
+              children: [
+                const Icon(
+                  Icons.navigation,
+                  color: Color(0xFFD4AF37),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _nextDetourTargetLabel,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+                if (_distanceToNextStopMeters != null)
+                  Text(
+                    _formatTrackingDistance(
+                      _distanceToNextStopMeters!,
+                    ),
+                    style: const TextStyle(
+                      color: Color(0xFFD4AF37),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _detourPosition == null
+                  ? 'Waiting for GPS position...'
+                  : 'Live location tracking is active.',
+              style: const TextStyle(
+                color: Colors.white54,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _stopDetour,
+                icon: const Icon(Icons.stop),
+                label: const Text('STOP DETOUR'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white70,
+                  side: const BorderSide(
+                    color: Colors.white24,
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 14,
+                  ),
+                ),
+              ),
+            ),
+          ] else
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _planning ? null : _startDetour,
+                icon: const Icon(Icons.navigation),
+                label: const Text('START DETOUR'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFD4AF37),
+                  foregroundColor: const Color(0xFF0D0D0F),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 14,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPlanButton() {
     return SizedBox(
       height: 56,
@@ -3093,4 +3670,14 @@ class _DetourScreenState extends State<DetourScreen> {
       ),
     );
   }
+}
+
+
+class _DestinationSearchException implements Exception {
+  const _DestinationSearchException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
 }
