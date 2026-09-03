@@ -359,12 +359,14 @@ extension _DetourStopsAndTrackingUi on _DetourScreenState {
   }
 
   Widget _buildDetourTrackingActions() {
+    if (!_detourActive && !_detourCompleted) {
+      return const SizedBox.shrink();
+    }
+
     return _buildSectionCard(
       title: _detourCompleted
           ? 'DETOUR COMPLETE'
-          : _detourActive
-              ? 'DETOUR ACTIVE'
-              : 'START THIS DETOUR',
+          : 'DETOUR ACTIVE',
       child: Column(
         crossAxisAlignment:
             CrossAxisAlignment.start,
@@ -434,84 +436,93 @@ extension _DetourStopsAndTrackingUi on _DetourScreenState {
                 ),
               ),
             ),
-          ] else
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed:
-                    _planning
-                        ? null
-                        : _startDetour,
-                icon: const Icon(
-                  Icons.navigation,
-                ),
-                label: const Text(
-                  'START DETOUR',
-                ),
-                style:
-                    FilledButton.styleFrom(
-                  backgroundColor:
-                      const Color(0xFFD4AF37),
-                  foregroundColor:
-                      const Color(0xFF0D0D0F),
-                  padding:
-                      const EdgeInsets.symmetric(
-                    vertical: 14,
-                  ),
-                ),
-              ),
-            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildPlanButton() {
+  Widget _buildStartDetourButton() {
     return SizedBox(
-      height: 56,
       width: double.infinity,
       child: FilledButton.icon(
         onPressed:
             _planning
                 ? null
-                : _planDetour,
+                : _startDetour,
+        icon: const Icon(
+          Icons.navigation,
+        ),
+        label: const Text(
+          'START DETOUR',
+        ),
         style:
             FilledButton.styleFrom(
           backgroundColor:
               const Color(0xFFD4AF37),
           foregroundColor:
               const Color(0xFF0D0D0F),
-          shape:
-              RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular(14),
-          ),
-        ),
-        icon: _planning
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child:
-                    CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Color(
-                    0xFF0D0D0F,
-                  ),
-                ),
-              )
-            : const Icon(
-                Icons.alt_route,
-              ),
-        label: Text(
-          _planning
-              ? 'CALCULATING ROUTE...'
-              : 'PLAN MY DETOUR',
-          style: const TextStyle(
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0.8,
+          padding:
+              const EdgeInsets.symmetric(
+            vertical: 14,
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildPlanButton() {
+    return Column(
+      children: [
+        SizedBox(
+          height: 56,
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed:
+                _planning
+                    ? null
+                    : _planDetour,
+            style:
+                FilledButton.styleFrom(
+              backgroundColor:
+                  const Color(0xFFD4AF37),
+              foregroundColor:
+                  const Color(0xFF0D0D0F),
+              shape:
+                  RoundedRectangleBorder(
+                borderRadius:
+                    BorderRadius.circular(14),
+              ),
+            ),
+            icon: _planning
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child:
+                        CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Color(
+                        0xFF0D0D0F,
+                      ),
+                    ),
+                  )
+                : const Icon(
+                    Icons.alt_route,
+                  ),
+            label: Text(
+              _planning
+                  ? 'CALCULATING ROUTE...'
+                  : 'PLAN MY DETOUR',
+              style: const TextStyle(
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildStartDetourButton(),
+      ],
     );
   }
 
