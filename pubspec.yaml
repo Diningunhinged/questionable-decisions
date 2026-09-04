@@ -1,33 +1,9 @@
 name: questionable_decisions
 description: "A new Flutter project."
-publish_to: 'none'
-
+publish_to: "none"
 version: 1.0.0+1
-
-environment:
-  sdk: ^3.13.1
-
-dependencies:
-  flutter:
-    sdk: flutter
-  cupertino_icons: ^1.0.8
-  http: ^1.6.0
-  geolocator: ^14.0.3
-  url_launcher: ^6.3.2
-  flutter_local_notifications: ^19.5.0
-  flutter_map: ^8.3.2
-  latlong2: ^0.10.1
-  google_maps_flutter: ^2.18.0
-  shared_preferences: ^2.5.3
-
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-
-  flutter_lints: ^6.0.0
-
-flutter:
-  uses-material-design: true
-
-  assets:
-    - assets/images/logo.png
+environment: {sdk: ^3.13.1}
+dependencies: {flutter: {sdk: flutter}, cupertino_icons: ^1.0.8, http: ^1.6.0, geolocator: ^14.0.3, url_launcher: ^6.3.2, flutter_local_notifications: ^19.5.0, flutter_map: ^8.3.2, latlong2: ^0.10.1, google_maps_flutter: ^2.18.0, shared_preferences: ^2.5.3}
+dev_dependencies: {flutter_test: {sdk: flutter}, flutter_lints: ^6.0.0, flutter_launcher_icons: ^0.14.4}
+flutter: {uses-material-design: true, assets: [assets/images/logo.png]}
+flutter_launcher_icons: {android: "ic_launcher", ios: true, image_path: "assets/icons/questionable_decisions.png", adaptive_icon_background: "#0D0D0F", adaptive_icon_foreground: "assets/icons/questionable_decisions_foreground.png", adaptive_icon_monochrome: "assets/icons/questionable_decisions_monochrome.png", adaptive_icon_foreground_inset: 16}
