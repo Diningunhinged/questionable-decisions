@@ -234,9 +234,11 @@ extension _DetourStopsAndTrackingUi on _DetourScreenState {
     final ratingText =
         rating?.toStringAsFixed(1);
 
-    return ListTile(
-      key: key,
-      contentPadding:
+    return Material(
+      color: Colors.transparent,
+      child: ListTile(
+        key: key,
+        contentPadding:
           const EdgeInsets.symmetric(
         horizontal: 4,
         vertical: 6,
@@ -301,6 +303,7 @@ extension _DetourStopsAndTrackingUi on _DetourScreenState {
           Icons.close,
           color: Colors.white54,
         ),
+        ),
       ),
     );
   }
@@ -315,8 +318,10 @@ extension _DetourStopsAndTrackingUi on _DetourScreenState {
     final ratingText =
         rating?.toStringAsFixed(1);
 
-    return ListTile(
-      contentPadding:
+    return Material(
+      color: Colors.transparent,
+      child: ListTile(
+        contentPadding:
           const EdgeInsets.symmetric(
         horizontal: 4,
         vertical: 6,
@@ -354,6 +359,7 @@ extension _DetourStopsAndTrackingUi on _DetourScreenState {
       trailing: const Icon(
         Icons.alt_route,
         color: Color(0xFFD4AF37),
+        ),
       ),
     );
   }

@@ -943,8 +943,11 @@ class _CrawlBuilderScreenState
           ),
         ),
       ),
-      body: _buildBuilderBody(
-        startingPosition,
+      body: SafeArea(
+        top: false,
+        child: _buildBuilderBody(
+          startingPosition,
+        ),
       ),
     );
   }
@@ -976,47 +979,84 @@ class _CrawlBuilderScreenState
                       Color(0xFFD4AF37),
                 ),
               )
-            : Column(
-                children: [
-                  Expanded(
-                    flex: isManual ? 3 : 5,
-                    child:
-                        GoogleMap(
-                      initialCameraPosition:
-                          CameraPosition(
-                        target:
-                            startingPosition,
-                        zoom: 14,
+            : isManual
+                ? CustomScrollView(
+                    slivers: [
+                      SliverToBoxAdapter(
+                        child: SizedBox(
+                          height: 260,
+                          child: GoogleMap(
+                            initialCameraPosition:
+                                CameraPosition(
+                              target:
+                                  startingPosition,
+                              zoom: 14,
+                            ),
+                            onMapCreated:
+                                (controller) {
+                              _mapController =
+                                  controller;
+                              _fitMapToVenues(
+                                venues,
+                              );
+                            },
+                            markers:
+                                _markers(),
+                            myLocationButtonEnabled:
+                                true,
+                            myLocationEnabled:
+                                true,
+                            zoomControlsEnabled:
+                                false,
+                            mapToolbarEnabled:
+                                false,
+                          ),
+                        ),
                       ),
-                      onMapCreated:
-                          (controller) {
-                        _mapController =
-                            controller;
-                        _fitMapToVenues(
-                          venues,
-                        );
-                      },
-                      markers:
-                          _markers(),
-                      myLocationButtonEnabled:
-                          true,
-                      myLocationEnabled:
-                          true,
-                      zoomControlsEnabled:
-                          false,
-                      mapToolbarEnabled:
-                          false,
-                    ),
-                  ),
-                  Expanded(
-                    flex: isManual ? 7 : 5,
-                    child:
-                        isManual
-                            ? _manualDetails()
-                            : _decisionParalysisDetails(),
-                  ),
-                ],
-              );
+                      SliverToBoxAdapter(
+                        child: _manualDetails(),
+                      ),
+                    ],
+                  )
+                : Column(
+                    children: [
+                      Expanded(
+                        flex: 5,
+                        child:
+                            GoogleMap(
+                          initialCameraPosition:
+                              CameraPosition(
+                            target:
+                                startingPosition,
+                            zoom: 14,
+                          ),
+                          onMapCreated:
+                              (controller) {
+                            _mapController =
+                                controller;
+                            _fitMapToVenues(
+                              venues,
+                            );
+                          },
+                          markers:
+                              _markers(),
+                          myLocationButtonEnabled:
+                              true,
+                          myLocationEnabled:
+                              true,
+                          zoomControlsEnabled:
+                              false,
+                          mapToolbarEnabled:
+                              false,
+                        ),
+                      ),
+                      Expanded(
+                        flex: 5,
+                        child:
+                            _decisionParalysisDetails(),
+                      ),
+                    ],
+                  );
   }
 
   Widget _errorView() {
@@ -1227,183 +1267,187 @@ class _CrawlBuilderScreenState
         color: Color(0xFF0D0D0F),
       ),
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'MANUAL BUILD',
-            style: TextStyle(
-              color: Color(0xFFD4AF37),
-              fontSize: 13,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1,
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'MANUAL BUILD',
+              style: TextStyle(
+                color: Color(0xFFD4AF37),
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1,
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '${_manualVenues.length} STOPS SELECTED',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
+            const SizedBox(height: 6),
+            Text(
+              '${_manualVenues.length} STOPS SELECTED',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            stopCount >= 5
-                ? 'Choose your stops from the available pool.'
-                : 'Choose your stops. You need $stopCount.',
-            style: const TextStyle(
-              color: Colors.white54,
-              fontSize: 13,
+            const SizedBox(height: 6),
+            Text(
+              stopCount >= 5
+                  ? 'Choose your stops from the available pool.'
+                  : 'Choose your stops. You need $stopCount.',
+              style: const TextStyle(
+                color: Colors.white54,
+                fontSize: 13,
+              ),
             ),
-          ),
-          const SizedBox(height: 14),
+            const SizedBox(height: 14),
 
-          Expanded(
-            child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.start,
+            const Text(
+              'AVAILABLE VENUES',
+              style: TextStyle(
+                color: Color(0xFFD4AF37),
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            if (available.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 24,
+                ),
+                child: Center(
+                  child: Text(
+                    _manualPool.isEmpty
+                        ? 'No eligible venues were found within your selected distance.'
+                        : 'All available venues are selected.',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white60,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              )
+            else
+              ListView.separated(
+                shrinkWrap: true,
+                physics:
+                    const NeverScrollableScrollPhysics(),
+                itemCount: available.length,
+                separatorBuilder:
+                    (context, index) =>
+                        const SizedBox(height: 8),
+                itemBuilder:
+                    (context, index) {
+                  final venue =
+                      available[index];
+
+                  return _availableManualVenueTile(
+                    venue,
+                    disabled:
+                        selectionCapReached,
+                  );
+                },
+              ),
+
+            const SizedBox(height: 12),
+
+            const Text(
+              'SELECTED STOPS',
+              style: TextStyle(
+                color: Color(0xFFD4AF37),
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            if (_manualVenues.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(
+                  vertical: 24,
+                ),
+                child: Center(
+                  child: Text(
+                    'Select venues above to build your crawl.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white60,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              )
+            else
+              ReorderableListView.builder(
+                shrinkWrap: true,
+                physics:
+                    const NeverScrollableScrollPhysics(),
+                itemCount:
+                    _manualVenues.length,
+                buildDefaultDragHandles: true,
+                onReorderItem:
+                    _reorderManualVenues,
+                itemBuilder:
+                    (context, index) {
+                  final venue =
+                      _manualVenues[index];
+
+                  return _manualVenueTile(
+                    venue,
+                    index,
+                  );
+                },
+              ),
+
+            const SizedBox(height: 14),
+
+            Row(
               children: [
-                const Text(
-                  'AVAILABLE VENUES',
-                  style: TextStyle(
-                    color: Color(0xFFD4AF37),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1,
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed:
+                        _manualVenues.length >=
+                                stopCount
+                            ? _saveManualCrawl
+                            : null,
+                    style:
+                        OutlinedButton.styleFrom(
+                      foregroundColor:
+                          const Color(0xFFD4AF37),
+                      side: const BorderSide(
+                        color: Color(0xFFD4AF37),
+                      ),
+                      padding:
+                          const EdgeInsets.symmetric(
+                        vertical: 16,
+                      ),
+                    ),
+                    child: const Text(
+                      'SAVE CRAWL',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 0.7,
+                      ),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 8),
-
+                const SizedBox(width: 10),
                 Expanded(
-                  flex: 3,
-                  child: available.isEmpty
-                      ? Center(
-                          child: Text(
-                            _manualPool.isEmpty
-                                ? 'No eligible venues were found within your selected distance.'
-                                : 'All available venues are selected.',
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: Colors.white60,
-                              fontSize: 14,
-                            ),
-                          ),
-                        )
-                      : ListView.separated(
-                          itemCount: available.length,
-                          separatorBuilder:
-                              (context, index) =>
-                                  const SizedBox(height: 8),
-                          itemBuilder:
-                              (context, index) {
-                            final venue =
-                                available[index];
-
-                            return _availableManualVenueTile(
-                              venue,
-                              disabled:
-                                  selectionCapReached,
-                            );
-                          },
-                        ),
-                ),
-
-                const SizedBox(height: 12),
-
-                const Text(
-                  'SELECTED STOPS',
-                  style: TextStyle(
-                    color: Color(0xFFD4AF37),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1,
+                  child: _startButton(
+                    enabled:
+                        _manualVenues.length >=
+                            stopCount,
+                    onPressed: _startManualCrawl,
+                    label: 'START CRAWL',
                   ),
-                ),
-                const SizedBox(height: 8),
-
-                Expanded(
-                  flex: 2,
-                  child: _manualVenues.isEmpty
-                      ? const Center(
-                          child: Text(
-                            'Select venues above to build your crawl.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Colors.white60,
-                              fontSize: 14,
-                            ),
-                          ),
-                        )
-                      : ReorderableListView.builder(
-                          itemCount:
-                              _manualVenues.length,
-                          buildDefaultDragHandles: true,
-                          onReorderItem:
-                              _reorderManualVenues,
-                          itemBuilder:
-                              (context, index) {
-                            final venue =
-                                _manualVenues[index];
-
-                            return _manualVenueTile(
-                              venue,
-                              index,
-                            );
-                          },
-                        ),
                 ),
               ],
             ),
-          ),
-
-          const SizedBox(height: 14),
-
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed:
-                      _manualVenues.length >=
-                              stopCount
-                          ? _saveManualCrawl
-                          : null,
-                  style:
-                      OutlinedButton.styleFrom(
-                    foregroundColor:
-                        const Color(0xFFD4AF37),
-                    side: const BorderSide(
-                      color: Color(0xFFD4AF37),
-                    ),
-                    padding:
-                        const EdgeInsets.symmetric(
-                      vertical: 16,
-                    ),
-                  ),
-                  child: const Text(
-                    'SAVE CRAWL',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.7,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _startButton(
-                  enabled:
-                      _manualVenues.length >=
-                          stopCount,
-                  onPressed: _startManualCrawl,
-                  label: 'START CRAWL',
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+          ],
+        ),
     );
   }
 

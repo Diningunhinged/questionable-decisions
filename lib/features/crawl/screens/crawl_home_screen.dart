@@ -623,24 +623,27 @@ class _CrawlHomeScreenState
               : Colors.white10,
         ),
       ),
-      child: CheckboxListTile(
-        value: selected,
-        activeColor:
-            const Color(0xFFD4AF37),
-        checkColor:
-            const Color(0xFF0D0D0F),
-        controlAffinity:
-            ListTileControlAffinity.leading,
-        title: Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w700,
+      child: Material(
+        color: Colors.transparent,
+        child: CheckboxListTile(
+          value: selected,
+          activeColor:
+              const Color(0xFFD4AF37),
+          checkColor:
+              const Color(0xFF0D0D0F),
+          controlAffinity:
+              ListTileControlAffinity.leading,
+          title: Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
           ),
+          onChanged: (_) {
+            _toggleCategory(category);
+          },
         ),
-        onChanged: (_) {
-          _toggleCategory(category);
-        },
       ),
     );
   }
@@ -850,28 +853,31 @@ class _CrawlHomeScreenState
               : Colors.white10,
         ),
       ),
-      child: ListTile(
-        onTap: onTap,
-        title: Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.w800,
+      child: Material(
+        color: Colors.transparent,
+        child: ListTile(
+          onTap: onTap,
+          title: Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+            ),
           ),
-        ),
-        subtitle: Text(
-          subtitle,
-          style: const TextStyle(
-            color: Colors.white54,
+          subtitle: Text(
+            subtitle,
+            style: const TextStyle(
+              color: Colors.white54,
+            ),
           ),
-        ),
-        trailing: Icon(
-          selected
-              ? Icons.radio_button_checked
-              : Icons.radio_button_off,
-          color: selected
-              ? const Color(0xFFD4AF37)
-              : Colors.white30,
+          trailing: Icon(
+            selected
+                ? Icons.radio_button_checked
+                : Icons.radio_button_off,
+            color: selected
+                ? const Color(0xFFD4AF37)
+                : Colors.white30,
+          ),
         ),
       ),
     );

@@ -406,41 +406,37 @@ extension _DetourDestinationUi on _DetourScreenState {
   Widget _buildSearchResultTile(
     CrawlLocationSearchResult result,
   ) {
-    return ListTile(
-      contentPadding:
-          const EdgeInsets.symmetric(
-        horizontal: 4,
-        vertical: 6,
-      ),
-      leading: const Icon(
-        Icons.location_on_outlined,
-        color:
-            Color(0xFFD4AF37),
-      ),
-      title: Text(
-        result.name,
-        maxLines: 1,
-        overflow:
-            TextOverflow.ellipsis,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
+    return Material(
+      color: Colors.transparent,
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 4,
+          vertical: 6,
         ),
-      ),
-      subtitle: result.address == null
-          ? null
-          : Text(
-              result.address!,
-              maxLines: 2,
-              overflow:
-                  TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white54,
+        leading: const Icon(
+          Icons.location_on_outlined,
+          color: Color(0xFFD4AF37),
+        ),
+        title: Text(
+          result.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        subtitle: result.address == null
+            ? null
+            : Text(
+                result.address!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white54,
+                ),
               ),
-            ),
-      onTap: () =>
-          _selectSearchResult(
-        result,
+        onTap: () => _selectSearchResult(result),
       ),
     );
   }
@@ -568,68 +564,54 @@ extension _DetourDestinationUi on _DetourScreenState {
   Widget _buildDestinationTile(
     DetourEndpoint destination,
   ) {
-    final saved =
-        isSavedDetourDestination(
-      destination,
-    );
+    final saved = isSavedDetourDestination(destination);
 
-    return ListTile(
-      contentPadding:
-          const EdgeInsets.symmetric(
-        horizontal: 4,
-        vertical: 3,
-      ),
-      leading: Icon(
-        saved
-            ? Icons.bookmark
-            : Icons.history,
-        color:
-            const Color(0xFFD4AF37),
-      ),
-      title: Text(
-        destination.name,
-        maxLines: 1,
-        overflow:
-            TextOverflow.ellipsis,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
+    return Material(
+      color: Colors.transparent,
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 4,
+          vertical: 3,
         ),
-      ),
-      subtitle:
-          destination.address == null
-              ? null
-              : Text(
-                  destination.address!,
-                  maxLines: 1,
-                  overflow:
-                      TextOverflow.ellipsis,
-                  style:
-                      const TextStyle(
-                    color:
-                        Colors.white38,
-                    fontSize: 12,
-                  ),
-                ),
-      trailing: IconButton(
-        tooltip: saved
-            ? 'Remove saved destination'
-            : 'Save destination',
-        onPressed: () =>
-            _toggleSavedDestination(
-          destination,
-        ),
-        icon: Icon(
+        leading: Icon(
           saved
               ? Icons.bookmark
-              : Icons.bookmark_border,
-          color:
-              const Color(0xFFD4AF37),
+              : Icons.history,
+          color: const Color(0xFFD4AF37),
         ),
-      ),
-      onTap: () =>
-          _selectDestination(
-        destination,
+        title: Text(
+          destination.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        subtitle: destination.address == null
+            ? null
+            : Text(
+                destination.address!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white38,
+                  fontSize: 12,
+                ),
+              ),
+        trailing: IconButton(
+          tooltip: saved
+              ? 'Remove saved destination'
+              : 'Save destination',
+          onPressed: () => _toggleSavedDestination(destination),
+          icon: Icon(
+            saved
+                ? Icons.bookmark
+                : Icons.bookmark_border,
+            color: const Color(0xFFD4AF37),
+          ),
+        ),
+        onTap: () => _selectDestination(destination),
       ),
     );
   }
